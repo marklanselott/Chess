@@ -1,0 +1,12 @@
+C:\Users\krest\OneDrive\Desktop\Diplom\Chess\ChessLib\bin\Release\net10.0\win-x64\ChessLib.deps.json
+C:\Users\krest\OneDrive\Desktop\Diplom\Chess\ChessLib\bin\Release\net10.0\win-x64\ChessLib.dll
+C:\Users\krest\OneDrive\Desktop\Diplom\Chess\ChessLib\bin\Release\net10.0\win-x64\ChessLib.pdb
+C:\Users\krest\OneDrive\Desktop\Diplom\Chess\ChessLib\obj\Release\net10.0\win-x64\ChessLib.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\krest\OneDrive\Desktop\Diplom\Chess\ChessLib\obj\Release\net10.0\win-x64\ChessLib.AssemblyInfoInputs.cache
+C:\Users\krest\OneDrive\Desktop\Diplom\Chess\ChessLib\obj\Release\net10.0\win-x64\ChessLib.AssemblyInfo.cs
+C:\Users\krest\OneDrive\Desktop\Diplom\Chess\ChessLib\obj\Release\net10.0\win-x64\ChessLib.csproj.CoreCompileInputs.cache
+C:\Users\krest\OneDrive\Desktop\Diplom\Chess\ChessLib\obj\Release\net10.0\win-x64\ChessLib.sourcelink.json
+C:\Users\krest\OneDrive\Desktop\Diplom\Chess\ChessLib\obj\Release\net10.0\win-x64\ChessLib.dll
+C:\Users\krest\OneDrive\Desktop\Diplom\Chess\ChessLib\obj\Release\net10.0\win-x64\refint\ChessLib.dll
+C:\Users\krest\OneDrive\Desktop\Diplom\Chess\ChessLib\obj\Release\net10.0\win-x64\ChessLib.pdb
+C:\Users\krest\OneDrive\Desktop\Diplom\Chess\ChessLib\obj\Release\net10.0\win-x64\ref\ChessLib.dll

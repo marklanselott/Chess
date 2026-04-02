@@ -5,5 +5,5 @@ namespace ChessLib.Logic;
 
 public interface IMoveRule
 {
-    List<Position> GetMoves(Board board, Position pos, Piece piece);
+    public List<Position> GetMoves(Board board, Position pos, Piece piece, GameState state);
 }

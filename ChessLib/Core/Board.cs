@@ -59,12 +59,29 @@ public class Board
         Grid[from.X,from.Y] = null;
     }
 
+    public Board Clone()
+    {
+        var newBoard = new Board();
+
+        for (int x = 0; x < 8; x++)
+        {
+            for (int y = 0; y < 8; y++)
+            {
+                var piece = Grid[x, y];
+                if (piece != null)
+                    newBoard.Grid[x, y] = new Piece(piece.Type, piece.Color);
+            }
+        }
+
+        return newBoard;
+    }
+
    public void SetupInitialPosition()
     {
-        // очищаємо дошку
+        // clear board
         Grid = new Piece?[8, 8];
 
-        // Чорний ряд (основні фігури)
+        // black pieces
         Grid[0,0] = new Piece(PieceType.Rook, PieceColor.Black);
         Grid[1,0] = new Piece(PieceType.Knight, PieceColor.Black);
         Grid[2,0] = new Piece(PieceType.Bishop, PieceColor.Black);
@@ -74,11 +91,11 @@ public class Board
         Grid[6,0] = new Piece(PieceType.Knight, PieceColor.Black);
         Grid[7,0] = new Piece(PieceType.Rook, PieceColor.Black);
 
-        // Чорний ряд пішаків
+        // black pawns
         for (int x = 0; x < 8; x++)
             Grid[x,1] = new Piece(PieceType.Pawn, PieceColor.Black);
 
-        // Білий ряд (основні фігури)
+        // white pieces
         Grid[0,7] = new Piece(PieceType.Rook, PieceColor.White);
         Grid[1,7] = new Piece(PieceType.Knight, PieceColor.White);
         Grid[2,7] = new Piece(PieceType.Bishop, PieceColor.White);
@@ -88,7 +105,7 @@ public class Board
         Grid[6,7] = new Piece(PieceType.Knight, PieceColor.White);
         Grid[7,7] = new Piece(PieceType.Rook, PieceColor.White);
 
-        // Білий ряд пішаків
+        // white pawns
         for (int x = 0; x < 8; x++)
             Grid[x,6] = new Piece(PieceType.Pawn, PieceColor.White);
     }

@@ -5,7 +5,7 @@ namespace ChessLib.Logic;
 
 public class QueenRules : IMoveRule
 {
-    public List<Position> GetMoves(Board board, Position pos, Piece piece)
+    public List<Position> GetMoves(Board board, Position pos, Piece piece, GameState state)
     {
         var moves = new List<Position>();
 
