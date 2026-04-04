@@ -28,6 +28,8 @@ async def search(search_filter: UserRequestSearch):
             query = query.filter(User.last_name == search_filter.last_name)
         if search_filter.phone:
             query = query.filter(User.phone == search_filter.phone)
+        if search_filter.tg_id:
+            query = query.filter(User.tg_id == search_filter.tg_id)
         if search_filter.email:
             query = query.filter(User.email == search_filter.email)
 
@@ -36,12 +38,14 @@ async def search(search_filter: UserRequestSearch):
         return {
             "searched": [
                 UserResponse(
+                    id=user.id,
                     unique=user.unique,
                     first_name=user.first_name,
                     middle_name=user.middle_name,
                     last_name=user.last_name,
                     phone=user.phone,
                     email=user.email,
+                    tg_id=user.tg_id,
                     registryed_at=datetime.fromtimestamp(user.registryed_at)
                 ) for user in users
             ],
@@ -94,12 +98,14 @@ async def update(update_data: UpdateUserRequest, unique: str):
         session.refresh(user)
 
         return UserResponse(
+            id=user.id,
             unique=user.unique,
             first_name=user.first_name,
             middle_name=user.middle_name,
             last_name=user.last_name,
             phone=user.phone,
             email=user.email,
+            tg_id=user.tg_id,
             registryed_at=datetime.fromtimestamp(user.registryed_at)
         )
 
@@ -120,6 +126,7 @@ async def register(data: RegisterUser):
             password=data.password,
             phone=data.phone,
             email=data.email,
+            tg_id=data.tg_id,
             is_active=True,
             role=UserRole.USER,
             registryed_at=int(datetime.utcnow().timestamp())
@@ -128,12 +135,36 @@ async def register(data: RegisterUser):
         session.commit()
 
         return UserResponse(
+            id=new_user.id,
             unique=new_user.unique,
             first_name=new_user.first_name,
             middle_name=new_user.middle_name,
             last_name=new_user.last_name,
             phone=new_user.phone,
             email=new_user.email,
+            tg_id=new_user.tg_id,
             registryed_at=datetime.fromtimestamp(new_user.registryed_at)
         )
 
+@router.post("/id/{id}", responses={
+    200: {"description": "User found"},
+    404: {"description": "User not found"}
+}, response_model=UserResponse)
+async def get_by_id(id: int):
+    with SessionLocal() as session:
+        user = session.query(User).filter(User.id == id).first()
+
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        return UserResponse(
+            id=user.id,
+            unique=user.unique,
+            first_name=user.first_name,
+            middle_name=user.middle_name,
+            last_name=user.last_name,
+            phone=user.phone,
+            email=user.email,
+            tg_id=user.tg_id,
+            registryed_at=datetime.fromtimestamp(user.registryed_at)
+        )

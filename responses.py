@@ -12,6 +12,7 @@ class User(BaseModel):
     last_name: str   | None
     phone: int       | None
     email: str       | None
+    tg_id: int       | None
     registryed_at: datetime
 
 class SearchUser(BaseModel):

@@ -11,6 +11,7 @@ class SearchUser(BaseModel):
     last_name: str   | None = None
     phone: int       | None = None
     email: str       | None = None
+    tg_id: int       | None = None
     start: int       | None = 0
 
 class CreateUser(BaseModel):
@@ -21,6 +22,7 @@ class CreateUser(BaseModel):
     password: str
     phone: int       | None = None
     email: str       | None = None
+    tg_id: int       | None = None
 
 class UpdateUser(BaseModel):
     unique: str      | None = None
