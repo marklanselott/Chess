@@ -17,7 +17,7 @@ class User(Base):
     middle_name = Column(String, nullable=True)
     last_name = Column(String, nullable=True)
     password = Column(String, nullable=False)
-    phone = Column(String, nullable=True)
+    phone = Column(Integer, nullable=True)
     email = Column(String, nullable=True)
     tg_id = Column(Integer, nullable=True)
     is_active = Column(Boolean, default=True)

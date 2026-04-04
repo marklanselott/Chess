@@ -2,6 +2,7 @@ from dotenv import load_dotenv; load_dotenv()
 from moduls.user import router as user_router
 from auth import router as auth_router
 from fastapi import FastAPI, APIRouter
+from db import init
 
 api = APIRouter(prefix="/api")
 app = FastAPI()

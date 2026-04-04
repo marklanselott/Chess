@@ -1,37 +1,54 @@
 from fastapi import APIRouter, HTTPException, Depends
 from requests import CreateUser as RegisterUser
 from responses import User as UserResponse
+from responses import UserSearch as UserResponseSearch
 from db.database import SessionLocal
+from db.models import User, UserRole
+from requests import UserSearch as UserRequestSearch
 from auth import verify_token
 from datetime import datetime
-from db.models import User, UserRole
 
 router = APIRouter(dependencies=[Depends(verify_token)])
 
-@router.get("/search/{unique}", responses={
-    200: {"description": "Successful search"},
-    400: {"description": "Unique identifier cannot be empty"}
-}, response_model=list[UserResponse])
-async def search(unique: str):
-    if unique == "":
-        raise HTTPException(status_code=400, detail="Unique identifier cannot be empty")
-    
+@router.post("/search/", responses={
+    200: {"description": "Successful search"}
+}, response_model=UserResponseSearch)
+async def search(search_filter: UserRequestSearch):
     with SessionLocal() as session:
-        db_users = session.query(User).filter(User.unique.like(f"%{unique}%")).all()
-        users = []
+        query = session.query(User).filter(User.role == UserRole.USER)
 
-        for user in db_users:
-            users.append(UserResponse(
-                unique=user.unique,
-                first_name=user.first_name,
-                middle_name=user.middle_name,
-                last_name=user.last_name,
-                phone=user.phone,
-                email=user.email,
-                registryed_at=datetime.fromtimestamp(user.registryed_at)
-            ))
-        
-        return users
+        if search_filter.unique:
+            query = query.filter(User.unique == search_filter.unique)
+        if search_filter.first_name:
+            query = query.filter(User.first_name == search_filter.first_name)
+        if search_filter.middle_name:
+            query = query.filter(User.middle_name == search_filter.middle_name)
+        if search_filter.last_name:
+            query = query.filter(User.last_name == search_filter.last_name)
+        if search_filter.phone:
+            query = query.filter(User.phone == search_filter.phone)
+        if search_filter.email:
+            query = query.filter(User.email == search_filter.email)
+
+        users = query.offset(search_filter.start).limit(15).all()
+
+        return {
+            "searched": [
+                UserResponse(
+                    unique=user.unique,
+                    first_name=user.first_name,
+                    middle_name=user.middle_name,
+                    last_name=user.last_name,
+                    phone=user.phone,
+                    email=user.email,
+                    registryed_at=datetime.fromtimestamp(user.registryed_at)
+                ) for user in users
+            ],
+            "start": search_filter.start,
+            "limit": 15
+        }
+
+
 
 @router.post("/register", responses={
     201: {"description": "User successfully registered"},
@@ -39,7 +56,7 @@ async def search(unique: str):
 }, response_model=UserResponse)
 async def register(data: RegisterUser):
     with SessionLocal() as session:
-        if session.query(User).filter(User.unique == data.unique).first():  # Updated field name
+        if session.query(User).filter(User.unique == data.unique).first():
             raise HTTPException(status_code=400, detail="Unique identifier already exists")
 
         new_user = User(

@@ -14,3 +14,8 @@ class User(BaseModel):
     email: str       | None
     registryed_at: datetime
 
+class UserSearch(BaseModel):
+    searched: list[User]
+    start: int
+    limit: int
+

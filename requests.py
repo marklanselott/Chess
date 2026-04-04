@@ -4,6 +4,15 @@ class Login(BaseModel):
     unique: str
     password: str
 
+class UserSearch(BaseModel):
+    unique: str      | None = None
+    first_name: str  | None = None
+    middle_name: str | None = None
+    last_name: str   | None = None
+    phone: int       | None = None
+    email: str       | None = None
+    start: int       | None = 0
+
 class CreateUser(BaseModel):
     unique: str
     first_name: str

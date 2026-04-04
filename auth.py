@@ -22,14 +22,6 @@ def verify_token(token: str):
     except: pass
     return False
 
-async def get_current_user(token: str = Header(..., alias="token")):
-    if not verify_token(token):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token"
-        )
-    return True
-
 @router.post(
     "/create-token", 
     responses={
