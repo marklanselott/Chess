@@ -1,10 +1,11 @@
+from responses import SearchUser as UserResponseSearch
 from fastapi import APIRouter, HTTPException, Depends
+from requests import UpdateUser as UpdateUserRequest
+from requests import SearchUser as UserRequestSearch
 from requests import CreateUser as RegisterUser
 from responses import User as UserResponse
-from responses import UserSearch as UserResponseSearch
 from db.database import SessionLocal
 from db.models import User, UserRole
-from requests import UserSearch as UserRequestSearch
 from auth import verify_token
 from datetime import datetime
 
@@ -48,7 +49,59 @@ async def search(search_filter: UserRequestSearch):
             "limit": 15
         }
 
+@router.post("/search/update/{unique}", responses={
+    200: {"description": "Successful updated"},
+    400: {"description": "Unique identifier already exists"},
+    404: {"description": "User not found"}
+}, response_model=UserResponse)
+async def update(update_data: UpdateUserRequest, unique: str):
+    with SessionLocal() as session:
+        user = session.query(User).filter(User.unique == unique).first()
 
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        changed = False
+
+        if update_data.unique and update_data.unique != user.unique:
+            if session.query(User).filter(User.unique == update_data.unique).first():
+                raise HTTPException(status_code=400, detail="Unique identifier already exists")
+            user.unique = update_data.unique
+            changed = True
+        if update_data.password and update_data.password != user.password:
+            user.password = update_data.password
+            changed = True
+        if update_data.first_name and update_data.first_name != user.first_name:
+            user.first_name = update_data.first_name
+            changed = True
+        if update_data.middle_name and update_data.middle_name != user.middle_name:
+            user.middle_name = update_data.middle_name
+            changed = True
+        if update_data.last_name and update_data.last_name != user.last_name:
+            user.last_name = update_data.last_name
+            changed = True
+        if update_data.phone and update_data.phone != user.phone:
+            user.phone = update_data.phone
+            changed = True
+        if update_data.email and update_data.email != user.email:
+            user.email = update_data.email
+            changed = True
+
+        if not changed:
+            raise HTTPException(status_code=400, detail="No changes detected")
+
+        session.commit()
+        session.refresh(user)
+
+        return UserResponse(
+            unique=user.unique,
+            first_name=user.first_name,
+            middle_name=user.middle_name,
+            last_name=user.last_name,
+            phone=user.phone,
+            email=user.email,
+            registryed_at=datetime.fromtimestamp(user.registryed_at)
+        )
 
 @router.post("/register", responses={
     201: {"description": "User successfully registered"},

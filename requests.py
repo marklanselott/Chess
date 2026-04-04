@@ -4,7 +4,7 @@ class Login(BaseModel):
     unique: str
     password: str
 
-class UserSearch(BaseModel):
+class SearchUser(BaseModel):
     unique: str      | None = None
     first_name: str  | None = None
     middle_name: str | None = None
@@ -19,5 +19,14 @@ class CreateUser(BaseModel):
     middle_name: str | None = None
     last_name: str   | None = None
     password: str
+    phone: int       | None = None
+    email: str       | None = None
+
+class UpdateUser(BaseModel):
+    unique: str      | None = None
+    first_name: str  | None = None
+    middle_name: str | None = None
+    last_name: str   | None = None
+    password: str    | None = None
     phone: int       | None = None
     email: str       | None = None
