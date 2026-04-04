@@ -17,23 +17,31 @@ router = APIRouter(dependencies=[Depends(verify_token)])
 async def search(search_filter: UserRequestSearch):
     with SessionLocal() as session:
         query = session.query(User).filter(User.role == UserRole.USER)
+        filtered = False
 
         if search_filter.unique:
+            filtered = True
             query = query.filter(User.unique == search_filter.unique)
         if search_filter.first_name:
+            filtered = True
             query = query.filter(User.first_name == search_filter.first_name)
         if search_filter.middle_name:
+            filtered = True
             query = query.filter(User.middle_name == search_filter.middle_name)
         if search_filter.last_name:
+            filtered = True
             query = query.filter(User.last_name == search_filter.last_name)
         if search_filter.phone:
+            filtered = True
             query = query.filter(User.phone == search_filter.phone)
         if search_filter.tg_id:
+            filtered = True
             query = query.filter(User.tg_id == search_filter.tg_id)
         if search_filter.email:
+            filtered = True
             query = query.filter(User.email == search_filter.email)
 
-        users = query.offset(search_filter.start).limit(15).all()
+        users = query.offset(search_filter.start).limit(15).all() if filtered else []
 
         return {
             "searched": [
