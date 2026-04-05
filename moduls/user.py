@@ -55,6 +55,7 @@ async def search(search_filter: UserRequestSearch):
                     phone=user.phone,
                     email=user.email,
                     tg_id=user.tg_id,
+                    rating=user.rating,
                     registryed_at=datetime.fromtimestamp(user.registryed_at)
                 ) for user in users
             ],
@@ -62,14 +63,14 @@ async def search(search_filter: UserRequestSearch):
             "limit": 15
         }
 
-@router.post("/update/{unique}", responses={
+@router.post("/update/user_id/{user_id}", responses={
     200: {"description": "Successful updated"},
     400: {"description": "Unique identifier already exists"},
     404: {"description": "User not found"}
 }, response_model=UserResponse)
-async def update(update_data: UpdateUserRequest, unique: str):
+async def update(update_data: UpdateUserRequest, user_id: str):
     with SessionLocal() as session:
-        user = session.query(User).filter(User.unique == unique).first()
+        user = session.query(User).filter(User.id == user_id).first()
 
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
@@ -99,6 +100,9 @@ async def update(update_data: UpdateUserRequest, unique: str):
         if update_data.email and update_data.email != user.email:
             user.email = update_data.email
             changed = True
+        if update_data.rating and update_data.rating != user.rating:
+            user.rating = update_data.rating
+            changed = True
 
         if not changed:
             raise HTTPException(status_code=400, detail="No changes detected")
@@ -115,6 +119,7 @@ async def update(update_data: UpdateUserRequest, unique: str):
             phone=user.phone,
             email=user.email,
             tg_id=user.tg_id,
+            rating=user.rating,
             registryed_at=datetime.fromtimestamp(user.registryed_at)
         )
 
@@ -152,6 +157,7 @@ async def register(data: RegisterUser):
             phone=new_user.phone,
             email=new_user.email,
             tg_id=new_user.tg_id,
+            rating=new_user.rating,
             registryed_at=datetime.fromtimestamp(new_user.registryed_at)
         )
 
@@ -171,13 +177,13 @@ async def remove(data: RemoveUserRequest):
 
         return {"detail": "User successfully removed"}
 
-@router.post("/id/{id}", responses={
+@router.post("/user_id/{user_id}", responses={
     200: {"description": "User found"},
     404: {"description": "User not found"}
 }, response_model=UserResponse)
-async def get_by_id(id: int):
+async def get_by_id(user_id: str):
     with SessionLocal() as session:
-        user = session.query(User).filter(User.id == id).first()
+        user = session.query(User).filter(User.id == user_id).first()
 
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
@@ -191,5 +197,6 @@ async def get_by_id(id: int):
             phone=user.phone,
             email=user.email,
             tg_id=user.tg_id,
+            rating=user.rating,
             registryed_at=datetime.fromtimestamp(user.registryed_at)
         )
