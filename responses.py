@@ -1,11 +1,13 @@
 from pydantic import BaseModel
 from datetime import datetime
+from uuid import UUID
 
 class CreateToken(BaseModel):
     jwt: str
     exp: int
 
 class User(BaseModel):
+    id: UUID
     unique: str
     first_name: str  | None
     middle_name: str | None
