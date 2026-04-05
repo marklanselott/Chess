@@ -2,6 +2,7 @@ from responses import SearchUser as UserResponseSearch
 from fastapi import APIRouter, HTTPException, Depends
 from requests import UpdateUser as UpdateUserRequest
 from requests import SearchUser as UserRequestSearch
+from requests import RemoveUser as RemoveUserRequest
 from requests import CreateUser as RegisterUser
 from responses import User as UserResponse
 from db.database import SessionLocal
@@ -61,7 +62,7 @@ async def search(search_filter: UserRequestSearch):
             "limit": 15
         }
 
-@router.post("/search/update/{unique}", responses={
+@router.post("/update/{unique}", responses={
     200: {"description": "Successful updated"},
     400: {"description": "Unique identifier already exists"},
     404: {"description": "User not found"}
@@ -153,6 +154,22 @@ async def register(data: RegisterUser):
             tg_id=new_user.tg_id,
             registryed_at=datetime.fromtimestamp(new_user.registryed_at)
         )
+
+@router.post("/remove", responses={
+    200: {"description": "User successfully removed"},
+    404: {"description": "Unique identifier or password is incorrect"}
+})
+async def remove(data: RemoveUserRequest):
+    with SessionLocal() as session:
+        user = session.query(User).filter(User.unique == data.unique, User.password == data.password).first()
+
+        if not user:
+            raise HTTPException(status_code=404, detail="Unique identifier or password is incorrect")
+
+        session.delete(user)
+        session.commit()
+
+        return {"detail": "User successfully removed"}
 
 @router.post("/id/{id}", responses={
     200: {"description": "User found"},

@@ -24,6 +24,10 @@ class CreateUser(BaseModel):
     email: str       | None = None
     tg_id: int       | None = None
 
+class RemoveUser(BaseModel):
+    unique: str
+    password: str
+
 class UpdateUser(BaseModel):
     unique: str      | None = None
     first_name: str  | None = None
