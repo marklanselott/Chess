@@ -1,8 +1,17 @@
 from pydantic import BaseModel
+from uuid import UUID
 
 class Login(BaseModel):
     unique: str
     password: str
+
+class SendRequestFriend(BaseModel):
+    user_id: UUID
+    friend_id: UUID
+
+class UpdateFriendRequest(BaseModel):
+    request_id: UUID
+    status: bool
 
 class SearchUser(BaseModel):
     unique: str      | None = None

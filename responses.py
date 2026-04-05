@@ -6,6 +6,12 @@ class CreateToken(BaseModel):
     jwt: str
     exp: int
 
+class CreateFriendRequest(BaseModel):
+    id: UUID
+    user_id: UUID
+    friend_id: UUID
+    status: bool
+
 class User(BaseModel):
     id: UUID
     unique: str
@@ -15,6 +21,7 @@ class User(BaseModel):
     phone: int       | None
     email: str       | None
     tg_id: int       | None
+    rating: int
     registryed_at: datetime
 
 class SearchUser(BaseModel):

@@ -3,12 +3,13 @@ from fastapi import APIRouter, HTTPException, Depends
 from requests import UpdateUser as UpdateUserRequest
 from requests import SearchUser as UserRequestSearch
 from requests import RemoveUser as RemoveUserRequest
+from db.models import User, UserRole, Friendship
 from requests import CreateUser as RegisterUser
 from responses import User as UserResponse
 from db.database import SessionLocal
-from db.models import User, UserRole
 from auth import verify_token
 from datetime import datetime
+import os
 
 router = APIRouter(dependencies=[Depends(verify_token)])
 
@@ -100,9 +101,6 @@ async def update(update_data: UpdateUserRequest, user_id: str):
         if update_data.email and update_data.email != user.email:
             user.email = update_data.email
             changed = True
-        if update_data.rating and update_data.rating != user.rating:
-            user.rating = update_data.rating
-            changed = True
 
         if not changed:
             raise HTTPException(status_code=400, detail="No changes detected")
@@ -141,6 +139,7 @@ async def register(data: RegisterUser):
             phone=data.phone,
             email=data.email,
             tg_id=data.tg_id,
+            rating=int(os.getenv("BASE_USER_RATING")),
             is_active=True,
             role=UserRole.USER,
             registryed_at=int(datetime.utcnow().timestamp())
@@ -172,6 +171,8 @@ async def remove(data: RemoveUserRequest):
         if not user:
             raise HTTPException(status_code=404, detail="Unique identifier or password is incorrect")
 
+        session.query(Friendship).filter(Friendship.user_id == user.id).delete()
+
         session.delete(user)
         session.commit()
 
@@ -200,3 +201,28 @@ async def get_by_id(user_id: str):
             rating=user.rating,
             registryed_at=datetime.fromtimestamp(user.registryed_at)
         )
+
+@router.post("/rating", responses={
+    200: {"description": "Rating updated successfully"},
+    404: {"description": "User not found"}
+}, response_model=UserResponse)
+async def get_rating_players(start: int=0):
+    with SessionLocal() as session:
+        users = session.query(User).filter(User.role == UserRole.USER).order_by(User.rating.desc()).offset(start).limit(10).all()
+
+        return [
+            UserResponse(
+                id=user.id,
+                unique=user.unique,
+                first_name=user.first_name,
+                middle_name=user.middle_name,
+                last_name=user.last_name,
+                phone=user.phone,
+                email=user.email,
+                tg_id=user.tg_id,
+                rating=user.rating,
+                registryed_at=datetime.fromtimestamp(user.registryed_at)
+            ) for user in users
+        ]
+
+
