@@ -178,7 +178,7 @@ async def remove(data: RemoveUserRequest):
 
         return {"detail": "User successfully removed"}
 
-@router.post("/user_id/{user_id}", responses={
+@router.get("/user_id/{user_id}", responses={
     200: {"description": "User found"},
     404: {"description": "User not found"}
 }, response_model=UserResponse)

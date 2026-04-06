@@ -6,7 +6,7 @@ class CreateToken(BaseModel):
     jwt: str
     exp: int
 
-class CreateFriendRequest(BaseModel):
+class FriendRequest(BaseModel):
     id: UUID
     user_id: UUID
     friend_id: UUID

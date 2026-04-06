@@ -1,11 +1,12 @@
-from fastapi import APIRouter, HTTPException, Depends
-from uuid import UUID
 from requests import SendRequestFriend, UpdateFriendRequest
-from responses import CreateFriendRequest, User as UserResponse
+from fastapi import APIRouter, HTTPException, Depends
+from responses import User as UserResponse
 from db.database import SessionLocal
+from responses import FriendRequest
 from db.models import Friendship
 from auth import verify_token
 from db.models import User
+from uuid import UUID
 
 router = APIRouter(dependencies=[Depends(verify_token)])
 
@@ -45,10 +46,10 @@ async def get_friends_list(user_id: UUID, start: int=0):
 
         return friends
 
-@router.post("/send_friend_request", responses={
+@router.post("/send_request", responses={
     200: {"description": "Friend request sent successfully"},
     404: {"description": "User not found"}
-}, response_model=CreateFriendRequest)
+}, response_model=FriendRequest)
 async def send_friend_request(data: SendRequestFriend):
     with SessionLocal() as session:
         user = session.query(User).filter(User.id == data.user_id).first()
@@ -69,14 +70,52 @@ async def send_friend_request(data: SendRequestFriend):
         session.add(new_request)
         session.commit()
 
-        return CreateFriendRequest(
+        return FriendRequest(
             id=new_request.id,
             user_id=new_request.user_id,
             friend_id=new_request.friend_id,
             status=new_request.status
         )
 
-@router.post("/update_friend_request", responses={
+@router.get("/cancel_request/request_id/{request_id}", responses={
+    200: {"description": "Friend request cancelled successfully"},
+    404: {"description": "Friend request not found"}
+})
+async def cancel_friend_request(request_id: UUID):
+    with SessionLocal() as session:
+        friendship = session.query(Friendship).filter(Friendship.id == request_id).filter(Friendship.status == False).first()
+
+        if not friendship:
+            raise HTTPException(status_code=404, detail="Friend request not found")
+
+        session.delete(friendship)
+        session.commit()
+
+        return {"detail": "Friend request cancelled successfully"}
+
+@router.get("/get_requests/user_id/{user_id}", responses={
+    200: {"description": "Friend requests retrieved successfully"},
+    404: {"description": "User not found"}
+})
+async def get_friend_requests(user_id: UUID):
+    with SessionLocal() as session:
+        user = session.query(User).filter(User.id == user_id).first()
+
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        friend_requests = session.query(Friendship).filter(Friendship.friend_id == user.id, Friendship.status == False).all()
+
+        return [
+            FriendRequest(
+                id=req.id,
+                user_id=req.user_id,
+                friend_id=req.friend_id,
+                status=req.status
+            ) for req in friend_requests
+        ]
+
+@router.post("/update_request", responses={
     200: {"description": "Friend request updated successfully"},
     200: {"description": "Friend request deleted successfully"},
     404: {"description": "Friend request not found"}
@@ -90,7 +129,7 @@ async def update_friend_request(data: UpdateFriendRequest):
         if not friendship:
             raise HTTPException(status_code=404, detail="Friend request not found")
 
-        if friendship.status and not data.status:
+        if not friendship.status and not data.status:
             session.delete(friendship)
             removed = True
         else:
