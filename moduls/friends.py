@@ -93,7 +93,7 @@ async def cancel_friend_request(request_id: UUID):
 
         return {"detail": "Friend request cancelled successfully"}
 
-@router.get("/get_requests/user_id/{user_id}", responses={
+@router.get("/get_requests_my/user_id/{user_id}", responses={
     200: {"description": "Friend requests retrieved successfully"},
     404: {"description": "User not found"}
 })
@@ -106,11 +106,87 @@ async def get_friend_requests(user_id: UUID):
 
         friend_requests = session.query(Friendship).filter(Friendship.user_id == user.id, Friendship.status == False).all()
 
+        friend = session.query(User).filter(User.id == friend_requests[0].friend_id).first()
+
+        if not friend:
+            raise HTTPException(status_code=404, detail="Friend not found")
+
         return [
             FriendRequest(
                 id=req.id,
-                user_id=req.user_id,
-                friend_id=req.friend_id,
+                user=UserResponse(
+                    id=user.id,
+                    unique=user.unique,
+                    first_name=user.first_name,
+                    middle_name=user.middle_name,
+                    last_name=user.last_name,
+                    phone=user.phone,
+                    email=user.email,
+                    tg_id=user.tg_id,
+                    rating=user.rating,
+                    registryed_at=user.registryed_at
+                ),
+                friend=UserResponse(
+                    id=friend.id,
+                    unique=friend.unique,
+                    first_name=friend.first_name,
+                    middle_name=friend.middle_name,
+                    last_name=friend.last_name,
+                    phone=friend.phone,
+                    email=friend.email,
+                    tg_id=friend.tg_id,
+                    rating=friend.rating,
+                    registryed_at=friend.registryed_at
+                ),
+                status=req.status
+            ) for req in friend_requests
+        ]
+
+@router.get("/get_requests_for_me/user_id/{user_id}", responses={
+    200: {"description": "Friend requests retrieved successfully"},
+    404: {"description": "User not found"}
+})
+async def get_friend_requests(user_id: UUID):
+    with SessionLocal() as session:
+        user = session.query(User).filter(User.id == user_id).first()
+
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        friend_requests = session.query(Friendship).filter(Friendship.friend_id == user.id, Friendship.status == False).all()
+
+        friend = session.query(User).filter(User.id == friend_requests[0].user_id).first()
+
+        if not friend:
+            raise HTTPException(status_code=404, detail="Friend not found")
+
+        return [
+            FriendRequest(
+                id=req.id,
+                user=UserResponse(
+                    id=user.id,
+                    unique=user.unique,
+                    first_name=user.first_name,
+                    middle_name=user.middle_name,
+                    last_name=user.last_name,
+                    phone=user.phone,
+                    email=user.email,
+                    tg_id=user.tg_id,
+                    rating=user.rating,
+                    registryed_at=user.registryed_at
+                ),
+                friend=UserResponse(
+                    id=friend.id,
+                    unique=friend.unique,
+                    first_name=friend.first_name,
+                    middle_name=friend.middle_name,
+                    last_name=friend.last_name,
+                    phone=friend.phone,
+                    email=friend.email,
+                    tg_id=friend.tg_id,
+                    rating=friend.rating,
+                    registryed_at=friend.registryed_at
+                ),
                 status=req.status
             ) for req in friend_requests
         ]
