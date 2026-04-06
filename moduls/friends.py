@@ -104,7 +104,7 @@ async def get_friend_requests(user_id: UUID):
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
 
-        friend_requests = session.query(Friendship).filter(Friendship.friend_id == user.id, Friendship.status == False).all()
+        friend_requests = session.query(Friendship).filter(Friendship.user_id == user.id, Friendship.status == False).all()
 
         return [
             FriendRequest(
