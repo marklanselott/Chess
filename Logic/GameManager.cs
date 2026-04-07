@@ -10,6 +10,7 @@ public class GameManager
     public PieceColor CurrentTurn { get; private set; }
 
     private MoveGenerator moveGenerator;
+    private List<string> _positionHistory = new List<string>();
 
     public GameManager()
     {
@@ -20,6 +21,57 @@ public class GameManager
         moveGenerator = new MoveGenerator(State);
 
         Board.SetupInitialPosition();
+        
+        _positionHistory.Add(GeneratePositionString()); 
+    }
+    
+
+    private string GeneratePositionString()
+    {
+        var sb = new System.Text.StringBuilder();
+
+        sb.Append(CurrentTurn).Append('|');
+
+        sb.Append(State.WhiteKingMoved).Append(State.WhiteLeftRookMoved).Append(State.WhiteRightRookMoved).Append('|');
+        sb.Append(State.BlackKingMoved).Append(State.BlackLeftRookMoved).Append(State.BlackRightRookMoved).Append('|');
+
+        if (State.LastDoublePawnMove.HasValue)
+            sb.Append(State.LastDoublePawnMove.Value.X).Append(State.LastDoublePawnMove.Value.Y).Append('|');
+        else
+            sb.Append("none|");
+
+        for (int x = 0; x < 8; x++)
+        {
+            for (int y = 0; y < 8; y++)
+            {
+                var piece = Board.Grid[x, y];
+                if (piece != null)
+                {
+                    sb.Append($"{x}{y}{piece.Color}{piece.Type},");
+                }
+            }
+        }
+
+        return sb.ToString();
+    }
+
+
+    public bool IsThreefoldRepetition()
+    {
+        if (_positionHistory.Count < 3) return false;
+
+        string currentPosition = _positionHistory.Last();
+        int count = 0;
+
+        foreach (var pos in _positionHistory)
+        {
+            if (pos == currentPosition)
+            {
+                count++;
+            }
+        }
+
+        return count >= 3;
     }
 
 
@@ -78,6 +130,8 @@ public class GameManager
         }
 
         CurrentTurn = CurrentTurn == PieceColor.White ? PieceColor.Black : PieceColor.White;
+
+        _positionHistory.Add(GeneratePositionString());
 
         return true;
     }
