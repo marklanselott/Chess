@@ -1,0 +1,19 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <PackageId>ChessAIbyMrNaniii</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>MrNaniii</Authors>
+    <Description>Chess ai.</Description>
+    <Tags>csharp;library;</Tags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ChessLibbyMrNaniii" Version="1.0.1" />
+  </ItemGroup>
+
+</Project>
