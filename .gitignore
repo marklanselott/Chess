@@ -1,5 +1,4 @@
-bin
 obj
-ChessLib.sln
-
+bin
 .gitignore
+Chess.sln
