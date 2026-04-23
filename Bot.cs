@@ -42,6 +42,16 @@ public class Bot
             var copyBoard = game.Board.Clone();
             copyBoard.Move(move.from, move.to);
 
+            var movedPiece = copyBoard.GetPiece(move.to);
+            if (movedPiece != null && movedPiece.Type == PieceType.Pawn)
+            {
+                if ((movedPiece.Color == PieceColor.White && move.to.Y == 0) || 
+                    (movedPiece.Color == PieceColor.Black && move.to.Y == 7))
+                {
+                    copyBoard.Grid[move.to.X, move.to.Y] = new Piece(PieceType.Queen, movedPiece.Color);
+                }
+            }
+
             int score = Minimax(copyBoard, _depth - 1, alpha, beta, nextTurn);
 
             if (_botColor == PieceColor.White)
@@ -70,12 +80,21 @@ public class Bot
     //Minimax 
     private int Minimax(Board board, int depth, int alpha, int beta, PieceColor currentTurn)
     {
-        if (depth == 0) 
-            return Evaluator.Evaluate(board);
-
         var moves = GetAllMoves(board, currentTurn);
 
         if (moves.Count == 0) 
+        {
+            if (_moveGen.IsKingInCheck(board, currentTurn))
+            {
+                return currentTurn == PieceColor.White ? -100000 - depth : 100000 + depth;
+            }
+            else
+            {
+                return 0;
+            }
+        }
+
+        if (depth == 0) 
             return Evaluator.Evaluate(board);
 
         PieceColor nextTurn = currentTurn == PieceColor.White ? PieceColor.Black : PieceColor.White;
@@ -88,14 +107,22 @@ public class Bot
                 var copy = board.Clone();
                 copy.Move(move.from, move.to);
 
-                int score = Minimax(copy, depth -1, alpha, beta, nextTurn);
-                maxScore = Math.Max(maxScore, score);
+                var movedPiece = copy.GetPiece(move.to);
 
-                alpha = Math.Max(alpha, score);
-                if (beta <= alpha)
+                if (movedPiece != null && movedPiece.Type == PieceType.Pawn)
                 {
-                    break;
+                    if ((movedPiece.Color == PieceColor.White && move.to.Y == 0) || 
+                        (movedPiece.Color == PieceColor.Black && move.to.Y == 7))
+                    {
+                        copy.Grid[move.to.X, move.to.Y] = new Piece(PieceType.Queen, movedPiece.Color);
+                    }
                 }
+
+                int score = Minimax(copy, depth - 1, alpha, beta, nextTurn);
+                maxScore = Math.Max(maxScore, score);
+                alpha = Math.Max(alpha, score);
+                
+                if (beta <= alpha) break;
             }
             return maxScore;
         }
@@ -107,14 +134,22 @@ public class Bot
                 var copy = board.Clone();
                 copy.Move(move.from, move.to);
 
-                int score = Minimax(copy, depth -1, alpha, beta, nextTurn);
-                minScore = Math.Min(minScore, score);
+                var movedPiece = copy.GetPiece(move.to);
 
-                beta = Math.Min(beta, score);
-                if (beta <= alpha)
+                if (movedPiece != null && movedPiece.Type == PieceType.Pawn)
                 {
-                    break;
+                    if ((movedPiece.Color == PieceColor.White && move.to.Y == 0) || 
+                        (movedPiece.Color == PieceColor.Black && move.to.Y == 7))
+                    {
+                        copy.Grid[move.to.X, move.to.Y] = new Piece(PieceType.Queen, movedPiece.Color);
+                    }
                 }
+
+                int score = Minimax(copy, depth - 1, alpha, beta, nextTurn);
+                minScore = Math.Min(minScore, score);
+                beta = Math.Min(beta, score);
+                
+                if (beta <= alpha) break;
             }
             return minScore;
         }
