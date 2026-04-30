@@ -9,6 +9,10 @@ public class GameManager
     public GameState State { get; private set; }
     public PieceColor CurrentTurn { get; private set; }
 
+    public bool IsCheckmate { get; private set; }
+    public bool IsStalemate { get; private set; }
+    public bool IsCheck { get; private set; }
+
     private MoveGenerator moveGenerator;
 
     public GameManager()
@@ -16,12 +20,9 @@ public class GameManager
         Board = new Board();
         State = new GameState();
         CurrentTurn = PieceColor.White;
-
         moveGenerator = new MoveGenerator(State);
-
         Board.SetupInitialPosition();
     }
-
 
     public bool MakeMove(Position from, Position to, out List<PieceType> promotionOptions)
     {
@@ -36,7 +37,6 @@ public class GameManager
         if (!legalMoves.Contains(to))
             return false;
 
-
         if (piece.Type == PieceType.King && Math.Abs(to.X - from.X) == 2)
         {
             if (to.X == 6)
@@ -46,9 +46,7 @@ public class GameManager
         }
 
         UpdateGameState(piece, from);
-
         Board.Move(from, to);
-
 
         if (piece.Type == PieceType.Pawn)
         {
@@ -61,7 +59,6 @@ public class GameManager
             {
                 State.LastDoublePawnMove = null;
             }
-
 
             bool isPromotionRow = (piece.Color == PieceColor.White && to.Y == 0) ||
                                   (piece.Color == PieceColor.Black && to.Y == 7);
@@ -78,6 +75,20 @@ public class GameManager
         }
 
         CurrentTurn = CurrentTurn == PieceColor.White ? PieceColor.Black : PieceColor.White;
+
+        IsCheck = moveGenerator.IsKingInCheck(Board, CurrentTurn);
+        bool noLegalMoves = moveGenerator.NoLegalMoves(Board, CurrentTurn);
+
+        if (noLegalMoves)
+        {
+            if (IsCheck) IsCheckmate = true;
+            else IsStalemate = true;
+        }
+        else
+        {
+            IsCheckmate = false;
+            IsStalemate = false;
+        }
 
         return true;
     }

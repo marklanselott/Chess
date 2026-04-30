@@ -44,6 +44,8 @@ public class MoveGenerator
 
     private void AddCastlingMoves(Board board, Position kingPos, Piece king, List<Position> moves)
     {
+        if (IsKingInCheck(board, king.Color)) return; 
+
         int rank = king.Color == PieceColor.White ? 7 : 0;
 
         // Short castling (King-side)
