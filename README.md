@@ -12,7 +12,7 @@ Since the API is stateless, it relies entirely on **FEN (Forsyth-Edwards Notatio
 
 ---
 
-## 🚀 Getting Started
+## 🚀 Getting Started (Local Development)
 
 ### Prerequisites
 - .NET 8.0 SDK (or later)
@@ -29,6 +29,31 @@ Since the API is stateless, it relies entirely on **FEN (Forsyth-Edwards Notatio
     dotnet run
 
 4. Open your browser and navigate to `http://localhost:<port>/swagger` to explore and test the endpoints via the Swagger UI.
+
+---
+
+## 🌍 Deployment & Hosting (Linux / Production)
+
+To run this API on a production server (e.g., a Linux VPS), you need to publish the app and configure the listening ports correctly.
+
+### 1. Publish the App
+Compile the project into an optimized release build:
+
+    dotnet publish -c Release -o ./publish
+
+Move the contents of the `publish` folder to your production server.
+
+### 2. Run and Configure the Port
+Navigate to the publish folder on your server and run the `.dll` file. You can dynamically specify the port using the `--urls` flag.
+
+**Local access only (if Python and C# are on the SAME server):**
+
+    dotnet ChessAPI.dll --urls "http://localhost:5000"
+
+**External access (if Python is on a DIFFERENT server or in Docker):**
+Use `*` or `0.0.0.0` to allow external connections from the internet or other containers.
+
+    dotnet ChessAPI.dll --urls "http://*:5000"
 
 ---
 
