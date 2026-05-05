@@ -1,46 +1,54 @@
-# Chess Logic Microservice API
+# ♟️ Chess Logic Microservice API
 
 A high-performance, **stateless** REST API built with C# and ASP.NET Core. This microservice acts as the core chess engine for a multiplayer chess platform, handling move validation, AI opponent calculation, and deep game analysis.
 
 Since the API is stateless, it relies entirely on **FEN (Forsyth-Edwards Notation)** strings passed by the client. It does not use a database or store active games in memory (except for asynchronous background jobs), making it extremely fast, scalable, and crash-resistant.
 
-## Features
-* **Move Validation:** Validates player moves and generates the updated board state.
-* **AI Opponent:** Calculates the best move for a bot using the Alpha-Beta pruning algorithm. Difficulty is dynamically adjustable via search depth.
-* **Game Analysis:** Analyzes completed games asynchronously to detect blunders, mistakes, and inaccuracies.
-* **Stateless Architecture:** Easy to scale; memory-efficient.
+## ✨ Features
+- **Move Validation:** Validates player moves and generates the updated board state.
+- **AI Opponent:** Calculates the best move for a bot using the Alpha-Beta pruning algorithm. Difficulty is dynamically adjustable via search depth.
+- **Game Analysis:** Analyzes completed games asynchronously to detect blunders, mistakes, and inaccuracies.
+- **Stateless Architecture:** Easy to scale; memory-efficient.
 
 ---
 
-## Getting Started
+## 🚀 Getting Started
 
 ### Prerequisites
-* .NET 8.0 SDK (or later)
-* The core logic is powered by a custom ChessLib package.
+- .NET 8.0 SDK (or later)
+- The core logic is powered by a custom ChessLib package.
 
 ### Installation & Running
 1. Clone the repository.
-2. Navigate to the project directory: cd ChessAPI
-3. Run the API: dotnet run
-4. Open your browser and navigate to http://localhost:<port>/swagger to explore and test the endpoints via the Swagger UI.
+2. Navigate to the project directory:
+
+    cd ChessAPI
+
+3. Run the API:
+
+    dotnet run
+
+4. Open your browser and navigate to `http://localhost:<port>/swagger` to explore and test the endpoints via the Swagger UI.
 
 ---
 
-## API Reference
+## 📡 API Reference
 
 ### 1. Make a Player Move
 Validates a move made by a human player.
 
-Endpoint: POST /api/chess/move
+**Endpoint:** `POST /api/chess/move`
 
-Request Body:
+**Request Body:**
+
     {
       "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 0 1",
       "from": "e2",
       "to": "e4"
     }
 
-Response:
+**Response:**
+
     {
       "isLegal": true,
       "newFen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b - - 0 1",
@@ -52,15 +60,19 @@ Response:
 ### 2. Generate an AI Move
 Calculates the best move for the computer.
 
-Endpoint: POST /api/chess/bot-move
+**Endpoint:** `POST /api/chess/bot-move`
 
-Request Body:
+**Request Body:**
+
     {
       "fen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1",
       "depth": 3
     }
 
-Response:
+*(Note: `depth` controls the AI difficulty. e.g., 1 = Easy, 3 = Medium, 5 = Hard).*
+
+**Response:**
+
     {
       "newFen": "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2",
       "moveFrom": "e7",
@@ -71,10 +83,11 @@ Response:
 ### 3. Analyze a Game (Asynchronous)
 Since analyzing a 40-move game at depth 5 can take a long time, this feature uses an async polling pattern to prevent HTTP timeouts.
 
-Step 3a: Start the Analysis
-Endpoint: POST /api/chess/analyze/start
+#### Step 3a: Start the Analysis
+**Endpoint:** `POST /api/chess/analyze/start`
 
-Request Body:
+**Request Body:**
+
     {
       "historyFens": [
         "FEN_1...",
@@ -83,25 +96,28 @@ Request Body:
       ]
     }
 
-Response (202 Accepted):
+**Response (202 Accepted):**
+
     {
       "jobId": "a1b2c3d4-e5f6-7890-1234-56789abcdef0",
       "message": "Аналіз розпочато"
     }
 
-Step 3b: Check Analysis Status (Polling)
+#### Step 3b: Check Analysis Status (Polling)
 The client should poll this endpoint every 5-10 seconds until the status is "Completed".
 
-Endpoint: GET /api/chess/analyze/status/{jobId}
+**Endpoint:** `GET /api/chess/analyze/status/{jobId}`
 
-Response (While processing):
+**Response (While processing):**
+
     {
       "jobId": "a1b2c3d4...",
       "status": "Processing",
       "results": null
     }
 
-Response (When finished):
+**Response (When finished):**
+
     {
       "jobId": "a1b2c3d4...",
       "status": "Completed",
@@ -123,6 +139,6 @@ Response (When finished):
 
 ---
 
-## Architecture Notes
-* Completely Stateless: Scaling this service is as simple as running multiple instances behind a load balancer. It requires no persistent database connections.
-* Job Dictionary: Game analysis relies on a thread-safe ConcurrentDictionary to temporarily hold data until the client retrieves it.
+## 🛠 Architecture Notes
+- **Completely Stateless:** Scaling this service is as simple as running multiple instances behind a load balancer. It requires no persistent database connections.
+- **Job Dictionary:** Game analysis relies on a thread-safe `ConcurrentDictionary` to temporarily hold data until the client retrieves it.
