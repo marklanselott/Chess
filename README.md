@@ -79,7 +79,7 @@ Validates a move made by a human player.
       "newFen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b - - 0 1",
       "isCheckmate": false,
       "isDraw": false,
-      "message": "Хід успішний"
+      "message": "Succeseful move"
     }
 
 ### 2. Generate an AI Move
@@ -125,7 +125,7 @@ Since analyzing a 40-move game at depth 5 can take a long time, this feature use
 
     {
       "jobId": "a1b2c3d4-e5f6-7890-1234-56789abcdef0",
-      "message": "Аналіз розпочато"
+      "message": "Start analizing"
     }
 
 #### Step 3b: Check Analysis Status (Polling)
