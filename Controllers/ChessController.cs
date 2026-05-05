@@ -1,9 +1,13 @@
 using Microsoft.AspNetCore.Mvc;
+using System.Collections.Concurrent;
+using System.Threading.Tasks;
+using System;
+using System.Collections.Generic;
 using ChessAPI.DTOs;
 using ChessLib.Core;
 using ChessLib.Logic;
-using ChessAI.Bot;
-using ChessAI.Evaluator;
+using ChessLib.Pieces;
+using ChessAI; 
 
 namespace ChessAPI.Controllers;
 
@@ -21,10 +25,11 @@ public class ChessController : ControllerBase
 
             Board board = new Board();
             board.LoadFromFen(request.Fen);
+            
             GameManager game = new GameManager(board, currentTurn);
 
             if (request.From.Length != 2 || request.To.Length != 2) 
-                return BadRequest(new MoveResponse { IsLegal = false, Message = "Неправильний формат координат." });
+                return BadRequest(new MoveResponse { IsLegal = false, Message = "Incorrect format." });
 
             int fromX = char.ToLower(request.From[0]) - 'a';
             int fromY = 8 - (int)char.GetNumericValue(request.From[1]);
@@ -35,11 +40,11 @@ public class ChessController : ControllerBase
             Position fromPos = new Position(fromX, fromY);
             Position toPos = new Position(toX, toY);
 
-            bool isLegal = game.MakeMove(fromPos, toPos);
+            bool isLegal = game.MakeMove(fromPos, toPos, out var promotionOptions);
 
             if (!isLegal)
             {
-                return Ok(new MoveResponse { IsLegal = false, Message = "Цей хід порушує правила." });
+                return Ok(new MoveResponse { IsLegal = false, Message = "Illegal move." });
             }
 
             PieceColor nextTurn = currentTurn == PieceColor.White ? PieceColor.Black : PieceColor.White;
@@ -50,12 +55,12 @@ public class ChessController : ControllerBase
                 NewFen = game.Board.GetFen(nextTurn),
                 IsCheckmate = game.IsCheckmate,
                 IsDraw = game.IsStalemate,
-                Message = "Хід успішний"
+                Message = "Succes move"
             });
         }
         catch (Exception ex)
         {
-            return BadRequest(new MoveResponse { IsLegal = false, Message = $"Внутрішня помилка: {ex.Message}" });
+            return BadRequest(new MoveResponse { IsLegal = false, Message = $"Error: {ex.Message}" });
         }
     }
 
@@ -72,11 +77,11 @@ public class ChessController : ControllerBase
             board.LoadFromFen(request.Fen);
             GameManager game = new GameManager(board, botColor);
 
-            Bot aiBot = new Bot(); 
+            Bot aiBot = new Bot(botColor, request.Depth); 
 
-            var bestMove = aiBot.FindBestMove(game, request.Depth);
+            var bestMove = aiBot.FindBestMove(game);
 
-            game.MakeMove(bestMove.from, bestMove.to);
+            game.MakeMove(bestMove.from, bestMove.to, out _);
 
             string fromStr = $"{(char)('a' + bestMove.from.X)}{8 - bestMove.from.Y}";
             string toStr = $"{(char)('a' + bestMove.to.X)}{8 - bestMove.to.Y}";
@@ -93,7 +98,7 @@ public class ChessController : ControllerBase
         }
         catch (Exception ex)
         {
-            return BadRequest($"Помилка бота: {ex.Message}");
+            return BadRequest($"AI error: {ex.Message}");
         }
     }
 
@@ -104,12 +109,9 @@ public class ChessController : ControllerBase
     public IActionResult StartAnalysis([FromBody] AnalyzeRequest request)
     {
         string jobId = Guid.NewGuid().ToString();
-
         _analysisJobs[jobId] = new AnalysisJobResponse { JobId = jobId, Status = "Processing" };
-
         Task.Run(() => RunHeavyAnalysis(jobId, request.HistoryFens));
-
-        return Accepted(new { JobId = jobId, Message = "Аналіз розпочато" });
+        return Accepted(new { JobId = jobId, Message = "Start analizing" });
     }
 
     [HttpGet("analyze/status/{jobId}")]
@@ -123,8 +125,7 @@ public class ChessController : ControllerBase
             }
             return Ok(job);
         }
-
-        return NotFound(new { Message = "Задачу не знайдено" });
+        return NotFound(new { Message = "Task not found" });
     }
 
     private void RunHeavyAnalysis(string jobId, List<string> historyFens)
@@ -132,7 +133,6 @@ public class ChessController : ControllerBase
         try
         {
             List<MoveAnalysis> results = new List<MoveAnalysis>();
-            Bot aiBot = new Bot();
             int previousEval = 0;
 
             for (int i = 0; i < historyFens.Count - 1; i++)
@@ -146,7 +146,9 @@ public class ChessController : ControllerBase
 
                 GameManager game = new GameManager(board, currentTurn);
 
-                var bestMove = aiBot.FindBestMove(game, 5); 
+                Bot aiBot = new Bot(currentTurn, 5); 
+                var bestMove = aiBot.FindBestMove(game); 
+                
                 int currentScore = Evaluator.Evaluate(game.Board);
                 string annotation = "Normal";
                 
@@ -165,7 +167,7 @@ public class ChessController : ControllerBase
                     else if (delta >= 200) annotation = "Great";    
                 }
 
-                previousEval = currentEval;
+                previousEval = currentScore;
 
                 results.Add(new MoveAnalysis 
                 {
@@ -176,17 +178,17 @@ public class ChessController : ControllerBase
                 });
             }
 
-            if (_analysisJobs.TryGetValue(jobId, out var job))
+            if (_analysisJobs.TryGetValue(jobId, out var jobInfo))
             {
-                job.Status = "Completed";
-                job.Results = results;
+                jobInfo.Status = "Completed";
+                jobInfo.Results = results;
             }
         }
-        catch (Exception ex)
+        catch (Exception) 
         {
-            if (_analysisJobs.TryGetValue(jobId, out var job))
+            if (_analysisJobs.TryGetValue(jobId, out var jobInfo))
             {
-                job.Status = "Error";
+                jobInfo.Status = "Error";
             }
         }
     }
