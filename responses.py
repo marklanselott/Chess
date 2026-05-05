@@ -29,3 +29,7 @@ class SearchUser(BaseModel):
     start: int
     limit: int
 
+class StartOpponentSearch(BaseModel):
+    user_id: UUID
+    status: str
+

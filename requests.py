@@ -45,3 +45,4 @@ class UpdateUser(BaseModel):
     password: str    | None = None
     phone: int       | None = None
     email: str       | None = None
+

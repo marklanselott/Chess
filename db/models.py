@@ -43,7 +43,13 @@ class Friendship(Base):
     status = Column(Boolean, default=False)
     created_at = Column(Integer, nullable=False, default=int(datetime.utcnow().timestamp()))
 
+class OpponentSearch(Base):
+    __tablename__ = "opponent_search"
 
+    id = Column(UUID, primary_key=True, index=True, default=uuid.uuid4)
+    user_id = Column(UUID, ForeignKey("users.id"), nullable=False)
+    status = Column(SQLEnum(GameSessionStatus), default=GameSessionStatus.Searching)
+    oponent = Column(UUID, ForeignKey("users.id"), nullable=True)
 
 # class GameSession(Base):
 #     __tablename__ = "game_sessions"
