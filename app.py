@@ -1,4 +1,3 @@
-from dotenv import load_dotenv; load_dotenv()
 from moduls.friends import router as friends_router
 from moduls.user import router as user_router
 from moduls.game import router as game_router

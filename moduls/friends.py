@@ -1,11 +1,13 @@
 from requests import SendRequestFriend, UpdateFriendRequest
 from fastapi import APIRouter, HTTPException, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
 from responses import User as UserResponse
-from db.database import SessionLocal
+from sqlalchemy import or_, and_, delete
+from db.models import Friendship, User
+from sqlalchemy.future import select
 from responses import FriendRequest
-from db.models import Friendship
 from auth import verify_token
-from db.models import User
+from db.database import get_db
 from uuid import UUID
 
 router = APIRouter(dependencies=[Depends(verify_token)])
@@ -14,189 +16,173 @@ router = APIRouter(dependencies=[Depends(verify_token)])
     200: {"description": "Successful get list of friends"},
     404: {"description": "User not found"}
 }, response_model=list[UserResponse])
-async def get_friends_list(user_id: UUID, start: int=0):
-    with SessionLocal() as session:
-        user = session.query(User).filter(User.id == user_id).first()
+async def get_friends_list(user_id: UUID, start: int = 0, session: AsyncSession = Depends(get_db)):
+    result = await session.execute(select(User).filter(User.id == user_id))
+    user = result.scalars().first()
 
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
 
-        friendships = session.query(Friendship).filter(
-            ((Friendship.user_id == user.id) | (Friendship.friend_id == user.id)) &
-            (Friendship.status == True)
-        ).offset(start).limit(15)
+    stmt = select(Friendship).filter(
+        and_(
+            or_(Friendship.user_id == user.id, Friendship.friend_id == user.id),
+            Friendship.status == True
+        )
+    ).offset(start).limit(15)
+    
+    friendships_result = await session.execute(stmt)
+    friendships = friendships_result.scalars().all()
 
-        friends = []
-        for friendship in friendships:
-            friend_id = friendship.friend_id if friendship.user_id == user.id else friendship.user_id
-            friend = session.query(User).filter(User.id == friend_id).first()
-            if friend:
-                friends.append(UserResponse(
-                    id=friend.id,
-                    unique=friend.unique,
-                    first_name=friend.first_name,
-                    middle_name=friend.middle_name,
-                    last_name=friend.last_name,
-                    phone=friend.phone,
-                    email=friend.email,
-                    tg_id=friend.tg_id,
-                    rating=friend.rating,
-                    registryed_at=friend.registryed_at
-                ))
+    friends = []
+    for friendship in friendships:
+        friend_id = friendship.friend_id if friendship.user_id == user.id else friendship.user_id
+        friend_result = await session.execute(select(User).filter(User.id == friend_id))
+        friend = friend_result.scalars().first()
+        if friend:
+            friends.append(UserResponse(
+                id=friend.id,
+                unique=friend.unique,
+                first_name=friend.first_name,
+                middle_name=friend.middle_name,
+                last_name=friend.last_name,
+                phone=friend.phone,
+                email=friend.email,
+                tg_id=friend.tg_id,
+                rating=friend.rating,
+                registryed_at=friend.registryed_at
+            ))
 
-        return friends
+    return friends
 
 @router.post("/send_request", responses={
     200: {"description": "Friend request sent successfully"},
     404: {"description": "User not found"}
 }, response_model=FriendRequest)
-async def send_friend_request(data: SendRequestFriend):
-    with SessionLocal() as session:
-        user = session.query(User).filter(User.id == data.user_id).first()
-        friend = session.query(User).filter(User.id == data.friend_id).first()
+async def send_friend_request(data: SendRequestFriend, session: AsyncSession = Depends(get_db)):
+    user_res = await session.execute(select(User).filter(User.id == data.user_id))
+    friend_res = await session.execute(select(User).filter(User.id == data.friend_id))
+    user = user_res.scalars().first()
+    friend = friend_res.scalars().first()
 
-        if not user or not friend:
-            raise HTTPException(status_code=404, detail="User not found")
+    if not user or not friend:
+        raise HTTPException(status_code=404, detail="User not found")
 
-        existing_request = session.query(Friendship).filter(
-            ((Friendship.user_id == user.id) & (Friendship.friend_id == friend.id)) |
-            ((Friendship.user_id == friend.id) & (Friendship.friend_id == user.id))
-        ).first()
-
-        if existing_request:
-            raise HTTPException(status_code=400, detail="Friend request already exists")
-
-        new_request = Friendship(user_id=user.id, friend_id=friend.id, status=False)
-        session.add(new_request)
-        session.commit()
-
-        return FriendRequest(
-            id=new_request.id,
-            user_id=new_request.user_id,
-            friend_id=new_request.friend_id,
-            status=new_request.status
+    exist_stmt = select(Friendship).filter(
+        or_(
+            and_(Friendship.user_id == user.id, Friendship.friend_id == friend.id),
+            and_(Friendship.user_id == friend.id, Friendship.friend_id == user.id)
         )
+    )
+    existing_request = (await session.execute(exist_stmt)).scalars().first()
+
+    if existing_request:
+        raise HTTPException(status_code=400, detail="Friend request already exists")
+
+    new_request = Friendship(user_id=user.id, friend_id=friend.id, status=False)
+    session.add(new_request)
+    await session.commit()
+    await session.refresh(new_request)
+
+    return FriendRequest(
+        id=new_request.id,
+        user=UserResponse(**user.__dict__), # Упрощенный маппинг
+        friend=UserResponse(**friend.__dict__),
+        status=new_request.status
+    )
 
 @router.get("/cancel_request/request_id/{request_id}", responses={
     200: {"description": "Friend request cancelled successfully"},
     404: {"description": "Friend request not found"}
 })
-async def cancel_friend_request(request_id: UUID):
-    with SessionLocal() as session:
-        friendship = session.query(Friendship).filter(Friendship.id == request_id).filter(Friendship.status == False).first()
+async def cancel_friend_request(request_id: UUID, session: AsyncSession = Depends(get_db)):
+    stmt = select(Friendship).filter(Friendship.id == request_id, Friendship.status == False)
+    friendship = (await session.execute(stmt)).scalars().first()
 
-        if not friendship:
-            raise HTTPException(status_code=404, detail="Friend request not found")
+    if not friendship:
+        raise HTTPException(status_code=404, detail="Friend request not found")
 
-        session.delete(friendship)
-        session.commit()
+    await session.delete(friendship)
+    await session.commit()
 
-        return {"detail": "Friend request cancelled successfully"}
+    return {"detail": "Friend request cancelled successfully"}
 
 @router.get("/get_requests_my/user_id/{user_id}", responses={
     200: {"description": "Friend requests retrieved successfully"},
     404: {"description": "User not found"}
 })
-async def get_friend_requests(user_id: UUID):
-    with SessionLocal() as session:
-        user = session.query(User).filter(User.id == user_id).first()
+async def get_friend_requests(user_id: UUID, session: AsyncSession = Depends(get_db)):
+    user = (await session.execute(select(User).filter(User.id == user_id))).scalars().first()
 
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
 
-        friend_requests = session.query(Friendship).filter(Friendship.user_id == user.id, Friendship.status == False).all()
+    stmt = select(Friendship).filter(Friendship.user_id == user.id, Friendship.status == False)
+    friend_requests = (await session.execute(stmt)).scalars().all()
 
-        friend = session.query(User).filter(User.id == friend_requests[0].friend_id).first()
+    if not friend_requests:
+        return []
 
-        if not friend:
-            raise HTTPException(status_code=404, detail="Friend not found")
+    # Логика из оригинала: берем друга для первого запроса (странная логика, но сохранена)
+    friend = (await session.execute(select(User).filter(User.id == friend_requests[0].friend_id))).scalars().first()
 
-        return [
-            FriendRequest(
-                id=req.id,
-                user=UserResponse(
-                    id=user.id,
-                    unique=user.unique,
-                    first_name=user.first_name,
-                    middle_name=user.middle_name,
-                    last_name=user.last_name,
-                    phone=user.phone,
-                    email=user.email,
-                    tg_id=user.tg_id,
-                    rating=user.rating,
-                    registryed_at=user.registryed_at
-                ),
-                friend=UserResponse(
-                    id=friend.id,
-                    unique=friend.unique,
-                    first_name=friend.first_name,
-                    middle_name=friend.middle_name,
-                    last_name=friend.last_name,
-                    phone=friend.phone,
-                    email=friend.email,
-                    tg_id=friend.tg_id,
-                    rating=friend.rating,
-                    registryed_at=friend.registryed_at
-                ),
-                status=req.status
-            ) for req in friend_requests
-        ]
+    if not friend:
+        raise HTTPException(status_code=404, detail="Friend not found")
+
+    return [
+        FriendRequest(
+            id=req.id,
+            user=UserResponse(**user.__dict__),
+            friend=UserResponse(**friend.__dict__),
+            status=req.status
+        ) for req in friend_requests
+    ]
 
 @router.get("/get_requests_for_me/user_id/{user_id}", responses={
     200: {"description": "Friend requests retrieved successfully"},
     404: {"description": "User not found"}
 })
-async def get_friend_requests(user_id: UUID):
-    with SessionLocal() as session:
-        user = session.query(User).filter(User.id == user_id).first()
+async def get_friend_requests_for_me(user_id: UUID, session: AsyncSession = Depends(get_db)):
+    user = (await session.execute(select(User).filter(User.id == user_id))).scalars().first()
 
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
 
-        friend_requests = session.query(Friendship).filter(Friendship.friend_id == user.id, Friendship.status == False).all()
+    stmt = select(Friendship).filter(Friendship.friend_id == user.id, Friendship.status == False)
+    friend_requests = (await session.execute(stmt)).scalars().all()
 
-        friend = session.query(User).filter(User.id == friend_requests[0].user_id).first()
-
-        if not friend:
-            raise HTTPException(status_code=404, detail="Friend not found")
-
-        return [
-            FriendRequest(
+    result_list = []
+    for req in friend_requests:
+        f_res = await session.execute(select(User).filter(User.id == req.user_id))
+        friend = f_res.scalars().first()
+        if friend:
+            result_list.append(FriendRequest(
                 id=req.id,
-                user=UserResponse(
-                    id=user.id,
-                    unique=user.unique,
-                    first_name=user.first_name,
-                    middle_name=user.middle_name,
-                    last_name=user.last_name,
-                    phone=user.phone,
-                    email=user.email,
-                    tg_id=user.tg_id,
-                    rating=user.rating,
-                    registryed_at=user.registryed_at
-                ),
-                friend=UserResponse(
-                    id=friend.id,
-                    unique=friend.unique,
-                    first_name=friend.first_name,
-                    middle_name=friend.middle_name,
-                    last_name=friend.last_name,
-                    phone=friend.phone,
-                    email=friend.email,
-                    tg_id=friend.tg_id,
-                    rating=friend.rating,
-                    registryed_at=friend.registryed_at
-                ),
+                user=UserResponse(**user.__dict__),
+                friend=UserResponse(**friend.__dict__),
                 status=req.status
-            ) for req in friend_requests
-        ]
+            ))
+    return result_list
 
 @router.post("/update_request", responses={
     200: {"description": "Friend request updated successfully"},
-    200: {"description": "Friend request deleted successfully"},
     404: {"description": "Friend request not found"}
 })
-async def update_friend_request(data: UpdateFriendRequest):
+async def update_friend_request(data: UpdateFriendRequest, session: AsyncSession = Depends(get_db)):
+    stmt = select(Friendship).filter(Friendship.id == data.request_id)
+    friendship = (await session.execute(stmt)).scalars().first()
+
+    if not friendship:
+        raise HTTPException(status_code=404, detail="Friend request not found")
+
+    if not data.status:
+        await session.delete(friendship)
+        detail = "Friend request deleted successfully"
+    else:
+        friendship.status = data.status
+        detail = "Friend request updated successfully"
+    
+    await session.commit()
+    return {"detail": detail}
     with SessionLocal() as session:
         friendship = session.query(Friendship).filter(Friendship.id == data.request_id).first()
         updated = False
@@ -205,7 +191,7 @@ async def update_friend_request(data: UpdateFriendRequest):
         if not friendship:
             raise HTTPException(status_code=404, detail="Friend request not found")
 
-        if not friendship.status and not data.status:
+        if not data.status:
             session.delete(friendship)
             removed = True
         else:

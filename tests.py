@@ -203,7 +203,7 @@ class Friendship:
         try:
             # 2. Test sending a request (отправка запроса)
             request = Friendship.send_request(token, user1["id"], user2["id"])
-            assert request["friend_id"] == user2["id"], "Friend request failed"
+            assert request["friend"]["id"] == user2["id"], "Friend request failed"
             print("\033[92m[SUCCESS]\033[0m Friend request sent")
 
             # 3. Test viewing requests (просмотр запросов)
@@ -241,8 +241,105 @@ class Friendship:
             User.remove_user(token, test_user2["unique"], test_user2["password"])
             print("\033[92m[SUCCESS]\033[0m Cleanup: Users removed")
 
+class Game:
+    def start_search_opponent(token: str, user_id: str):
+        url = f"{base}/api/game/start_search_opponent"
+        params = {
+            "token": token,
+            "user_id": user_id
+        }
+
+        response = httpx.post(url, params=params)
+        assert response.status_code == 200, f"Failed to start opponent search: {response.text}"
+        return response.json()
+
+    def await_opponent(token: str, user_id: str):
+        url = f"{base}/api/game/await_oponent"
+        params = {
+            "token": token,
+            "user_id": user_id
+        }
+
+        response = httpx.get(url, params=params, timeout=10)
+        assert response.status_code == 200, f"Failed to await opponent: {response.text}"
+        return response.json()
+
+    def confirm_opponent(token: str, user_id: str):
+        url = f"{base}/api/game/confirm_opponent"
+        params = {
+            "token": token,
+            "user_id": user_id
+        }
+
+        response = httpx.post(url, params=params)
+        assert response.status_code == 200, f"Failed to confirm opponent: {response.text}"
+        return response.json()
+
+    def stop_search_opponent(token: str, user_id: str):
+        url = f"{base}/api/game/stop_search_opponent"
+        params = {
+            "token": token,
+            "user_id": user_id
+        }
+
+        response = httpx.post(url, params=params)
+        assert response.status_code == 200, f"Failed to stop opponent search: {response.text}"
+        return response.json()
+
+    def test():
+        token = Auth.get_token()
+
+        try: User.remove_user(token, test_user1["unique"], test_user1["password"])
+        except: pass
+        try: User.remove_user(token, test_user2["unique"], test_user2["password"])
+        except: pass
+
+        user1 = User.register_user(token, test_user1)
+        user2 = User.register_user(token, test_user2)
+        print(f"\033[92m[SUCCESS]\033[0m Users {user1['unique']} and {user2['unique']} registered for game test")
+
+        try:
+            first_search = Game.start_search_opponent(token, user1["id"])
+            assert first_search["user_id"] == user1["id"], "Search started for wrong user"
+            assert first_search["status"] == "searching", "Search status is not searching"
+            print("\033[92m[SUCCESS]\033[0m Opponent search started")
+
+            Game.stop_search_opponent(token, user1["id"])
+            print("\033[92m[SUCCESS]\033[0m Opponent search stopped")
+
+            Game.start_search_opponent(token, user1["id"])
+            Game.start_search_opponent(token, user2["id"])
+            print("\033[92m[SUCCESS]\033[0m Opponent search started for both users")
+
+            user1_match = Game.await_opponent(token, user1["id"])
+            assert user1_match["oponent"] == user2["id"], "Max got wrong opponent"
+            assert user1_match["status"] == "waiting_opponent", "Max match status is not waiting opponent"
+            print("\033[92m[SUCCESS]\033[0m Max found opponent")
+
+            user2_match = Game.await_opponent(token, user2["id"])
+            assert user2_match["oponent"] == user1["id"], "John got wrong opponent"
+            assert user2_match["status"] == "waiting_opponent", "John match status is not waiting opponent"
+            print("\033[92m[SUCCESS]\033[0m John found opponent")
+
+            user1_confirm = Game.confirm_opponent(token, user1["id"])
+            assert user1_confirm["status"] == "in_game", "Max did not confirm opponent"
+            print("\033[92m[SUCCESS]\033[0m Max confirmed opponent")
+
+            user2_confirm = Game.confirm_opponent(token, user2["id"])
+            assert user2_confirm["status"] == "in_game", "John did not confirm opponent"
+            print("\033[92m[SUCCESS]\033[0m John confirmed opponent")
+
+        finally:
+            try: Game.stop_search_opponent(token, user1["id"])
+            except: pass
+            try: Game.stop_search_opponent(token, user2["id"])
+            except: pass
+            User.remove_user(token, test_user1["unique"], test_user1["password"])
+            User.remove_user(token, test_user2["unique"], test_user2["password"])
+            print("\033[92m[SUCCESS]\033[0m Cleanup: Game users removed")
+
 if __name__ == "__main__":
-    for module in [User, Friendship]:
+    for module in [User, Friendship, Game]:
         try: module.test()
         except Exception as e:
             print(f"\033[91m[ERROR]\033[0m {e}")
