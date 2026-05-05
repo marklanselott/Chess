@@ -155,4 +155,98 @@ public class Board
         }
         return sb.ToString();
     }
+
+    // collect all to fen
+    public string GetFen(PieceColor currentTurn)
+    {
+        System.Text.StringBuilder fen = new System.Text.StringBuilder();
+
+        for (int y = 0; y < 8; y++) 
+        {
+            int emptyCount = 0;
+            for (int x = 0; x < 8; x++)
+            {
+                var piece = Grid[x, y];
+                if (piece == null)
+                {
+                    emptyCount++;
+                }
+                else
+                {
+                    if (emptyCount > 0)
+                    {
+                        fen.Append(emptyCount);
+                        emptyCount = 0;
+                    }
+                    fen.Append(GetPieceChar(piece));
+                }
+            }
+            if (emptyCount > 0)
+            {
+                fen.Append(emptyCount);
+            }
+            
+            if (y < 7) fen.Append('/');
+        }
+
+        fen.Append(currentTurn == PieceColor.White ? " w " : " b ");
+
+        fen.Append("- - 0 1"); 
+
+        return fen.ToString();
+    }
+
+    public void LoadFromFen(string fen)
+    {
+        Grid = new Piece[8, 8]; 
+        
+        string[] parts = fen.Split(' ');
+        string[] rows = parts[0].Split('/'); 
+
+        for (int y = 0; y < 8; y++)
+        {
+            int x = 0;
+            foreach (char c in rows[y])
+            {
+                if (char.IsDigit(c))
+                {
+                    x += (int)char.GetNumericValue(c);
+                }
+                else
+                {
+                    Grid[x, y] = CreatePieceFromChar(c);
+                    x++;
+                }
+            }
+        }
+    }
+
+    private char GetPieceChar(Piece piece)
+    {
+        char c = piece.Type switch {
+            PieceType.Pawn => 'p',
+            PieceType.Knight => 'n',
+            PieceType.Bishop => 'b',
+            PieceType.Rook => 'r',
+            PieceType.Queen => 'q',
+            PieceType.King => 'k',
+            _ => '?'
+        };
+        return piece.Color == PieceColor.White ? char.ToUpper(c) : c;
+    }
+
+    private Piece CreatePieceFromChar(char c)
+    {
+        PieceColor color = char.IsUpper(c) ? PieceColor.White : PieceColor.Black;
+        PieceType type = char.ToLower(c) switch {
+            'p' => PieceType.Pawn,
+            'n' => PieceType.Knight,
+            'b' => PieceType.Bishop,
+            'r' => PieceType.Rook,
+            'q' => PieceType.Queen,
+            'k' => PieceType.King,
+            _ => throw new Exception($"Inncorect char FEN: {c}")
+        };
+        return new Piece(type, color);
+    }
 }
