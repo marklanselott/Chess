@@ -30,6 +30,18 @@ public class GameManager
         PositionHistory[Board.GetBoardString() + CurrentTurn] = 1;
     }
 
+    public GameManager(Board loadedBoard, PieceColor currentTurn)
+    {
+        Board = loadedBoard;
+        State = new GameState(); 
+        CurrentTurn = currentTurn;
+        moveGenerator = new MoveGenerator(State);
+
+        PositionHistory = new Dictionary<string, int>();
+        PositionHistory[Board.GetBoardString() + CurrentTurn] = 1;
+    }
+
+
     public bool MakeMove(Position from, Position to, out List<PieceType> promotionOptions)
     {
         promotionOptions = null;
