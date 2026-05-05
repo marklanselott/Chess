@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
 
     <PackageId>ChessLibbyMrNaniii</PackageId>
-    <Version>1.0.1</Version>
+    <Version>1.0.3</Version>
     <Authors>MrNaniii</Authors>
     <Description>Chess engine.</Description>
     <Tags>csharp;library;</Tags>
