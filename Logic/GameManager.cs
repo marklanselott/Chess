@@ -13,6 +13,9 @@ public class GameManager
     public bool IsStalemate { get; private set; }
     public bool IsCheck { get; private set; }
 
+    public bool IsDrawByRepetition { get; private set; }
+    public Dictionary<string, int> PositionHistory { get; private set; }
+
     private MoveGenerator moveGenerator;
 
     public GameManager()
@@ -22,6 +25,9 @@ public class GameManager
         CurrentTurn = PieceColor.White;
         moveGenerator = new MoveGenerator(State);
         Board.SetupInitialPosition();
+
+        PositionHistory = new Dictionary<string, int>();
+        PositionHistory[Board.GetBoardString() + CurrentTurn] = 1;
     }
 
     public bool MakeMove(Position from, Position to, out List<PieceType> promotionOptions)
@@ -79,6 +85,17 @@ public class GameManager
         IsCheck = moveGenerator.IsKingInCheck(Board, CurrentTurn);
         bool noLegalMoves = moveGenerator.NoLegalMoves(Board, CurrentTurn);
 
+        string currentHash = Board.GetBoardString() + CurrentTurn;
+        if (PositionHistory.ContainsKey(currentHash))
+            PositionHistory[currentHash]++;
+        else
+            PositionHistory[currentHash] = 1;
+
+        if (PositionHistory[currentHash] >= 3)
+        {
+            IsDrawByRepetition = true;
+        }
+
         if (noLegalMoves)
         {
             if (IsCheck) IsCheckmate = true;
@@ -90,7 +107,7 @@ public class GameManager
             IsStalemate = false;
         }
 
-        return true;
+        return true; 
     }
 
     public void PromotePawn(Position pos, PieceType chosenType)

@@ -138,4 +138,21 @@ public class Board
 
         return boardState;
     }
+
+    public string GetBoardString()
+    {
+        System.Text.StringBuilder sb = new System.Text.StringBuilder();
+        for (int y = 0; y < 8; y++)
+        {
+            for (int x = 0; x < 8; x++)
+            {
+                var piece = Grid[x, y];
+                if (piece == null) 
+                    sb.Append(".");
+                else 
+                    sb.Append($"{(int)piece.Color}{(int)piece.Type}");
+            }
+        }
+        return sb.ToString();
+    }
 }
