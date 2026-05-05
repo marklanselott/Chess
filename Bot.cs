@@ -1,9 +1,5 @@
+using System;
 using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations;
-using System.Reflection.Metadata;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
-using System.Text.RegularExpressions;
 using ChessLib.Core;
 using ChessLib.Logic;
 using ChessLib.Pieces;
@@ -13,7 +9,7 @@ namespace ChessAI;
 public class Bot
 {
     private PieceColor _botColor;
-    private MoveGenerator _moveGen;
+    private MoveGenerator _moveGen = null!; 
     private int _depth;
 
     public Bot(PieceColor botColor, int depth)
@@ -77,7 +73,7 @@ public class Bot
         return bestMove;
     }
 
-    //Minimax 
+    // Minimax 
     private int Minimax(Board board, int depth, int alpha, int beta, PieceColor currentTurn, Dictionary<string, int> gameHistory)
     {
         var moves = GetAllMoves(board, currentTurn);
@@ -128,7 +124,7 @@ public class Bot
                     }
                 }
 
-                int score = Minimax(copy, depth - 1, alpha, beta, nextTurn);
+                int score = Minimax(copy, depth - 1, alpha, beta, nextTurn, gameHistory);
                 maxScore = Math.Max(maxScore, score);
                 alpha = Math.Max(alpha, score);
                 
@@ -155,7 +151,7 @@ public class Bot
                     }
                 }
 
-                int score = Minimax(copy, depth - 1, alpha, beta, nextTurn);
+                int score = Minimax(copy, depth - 1, alpha, beta, nextTurn, gameHistory);
                 minScore = Math.Min(minScore, score);
                 beta = Math.Min(beta, score);
                 
@@ -165,7 +161,7 @@ public class Bot
         }
     }
 
-    //collect all legal moves for current turn
+    // collect all legal moves for current turn
     private List<(Position from, Position to)> GetAllMoves(Board board, PieceColor color)
     {
         var moves = new List<(Position from, Position to)>();
