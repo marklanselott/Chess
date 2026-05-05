@@ -6,14 +6,14 @@
     <Nullable>enable</Nullable>
 
     <PackageId>ChessAIbyMrNaniii</PackageId>
-    <Version>1.0.3</Version>
+    <Version>1.0.4</Version>
     <Authors>MrNaniii</Authors>
     <Description>Chess ai.</Description>
     <Tags>csharp;library;</Tags>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="ChessLibbyMrNaniii" Version="1.0.3" />
+    <PackageReference Include="ChessLibbyMrNaniii" Version="1.0.4" />
   </ItemGroup>
 
 </Project>

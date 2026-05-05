@@ -177,6 +177,9 @@ public class Bot
                 moves.Add((fromPos.Value, toPos));
             }
         }
+
+        moves = moves.OrderByDescending(m => board.GetPiece(m.to) != null ? 1 : 0).ToList();
+
         return moves;
     }
 }
