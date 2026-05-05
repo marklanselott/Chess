@@ -52,7 +52,7 @@ public class Bot
                 }
             }
 
-            int score = Minimax(copyBoard, _depth - 1, alpha, beta, nextTurn);
+            int score = Minimax(copyBoard, _depth - 1, alpha, beta, nextTurn, game.PositionHistory);
 
             if (_botColor == PieceColor.White)
             {
@@ -78,7 +78,7 @@ public class Bot
     }
 
     //Minimax 
-    private int Minimax(Board board, int depth, int alpha, int beta, PieceColor currentTurn)
+    private int Minimax(Board board, int depth, int alpha, int beta, PieceColor currentTurn, Dictionary<string, int> gameHistory)
     {
         var moves = GetAllMoves(board, currentTurn);
 
@@ -95,7 +95,17 @@ public class Bot
         }
 
         if (depth == 0) 
-            return Evaluator.Evaluate(board);
+        {
+            int eval = Evaluator.Evaluate(board);
+            
+            string hash = board.GetBoardString() + currentTurn;
+            if (gameHistory.ContainsKey(hash) && gameHistory[hash] >= 1)
+            {
+                eval += (currentTurn == PieceColor.White ? -50 : 50); 
+            }
+            
+            return eval;
+        }
 
         PieceColor nextTurn = currentTurn == PieceColor.White ? PieceColor.Black : PieceColor.White;
 
