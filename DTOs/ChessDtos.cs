@@ -16,6 +16,7 @@ public class MoveResponse
     public string? Message { get; set; }     
 }
 
+
 public class BotMoveRequest
 {
     public string Fen { get; set; } = string.Empty;
@@ -29,6 +30,7 @@ public class BotMoveResponse
     public string MoveTo { get; set; } = string.Empty;
     public bool IsCheckmate { get; set; }
 }
+
 
 public class AnalyzeRequest
 {
@@ -48,4 +50,17 @@ public class AnalysisJobResponse
     public string JobId { get; set; } = string.Empty;
     public string Status { get; set; } = "Processing"; 
     public List<MoveAnalysis>? Results { get; set; }
+}
+
+
+public class LegalMovesRequest
+{
+    public string Fen { get; set; } = string.Empty;
+    public string From { get; set; } = string.Empty; 
+}
+
+public class LegalMovesResponse
+{
+    public List<string> LegalMoves { get; set; } = new(); 
+    public string Message { get; set; } = string.Empty;
 }

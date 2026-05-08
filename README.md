@@ -6,6 +6,7 @@ Since the API is stateless, it relies entirely on **FEN (Forsyth-Edwards Notatio
 
 ## ✨ Features
 - **Move Validation:** Validates player moves and generates the updated board state.
+- **Legal Moves Detection:** Instantly calculates all valid destination squares for a specific piece (useful for UI highlighting).
 - **AI Opponent:** Calculates the best move for a bot using the Alpha-Beta pruning algorithm. Difficulty is dynamically adjustable via search depth.
 - **Game Analysis:** Analyzes completed games asynchronously to detect blunders, mistakes, and inaccuracies.
 - **Stateless Architecture:** Easy to scale; memory-efficient.
@@ -79,10 +80,32 @@ Validates a move made by a human player.
       "newFen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b - - 0 1",
       "isCheckmate": false,
       "isDraw": false,
-      "message": "Succeseful move"
+      "message": "Succes move"
     }
 
-### 2. Generate an AI Move
+### 2. Get Legal Moves for a Piece
+Returns a list of all valid squares a piece can move to from a given starting square. Highly useful for UI logic (e.g., highlighting valid moves when a user clicks a piece).
+
+**Endpoint:** `POST /api/chess/legal-moves`
+
+**Request Body:**
+
+    {
+      "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+      "from": "e2"
+    }
+
+**Response:**
+
+    {
+      "legalMoves": [
+        "e3",
+        "e4"
+      ],
+      "message": "Успіх"
+    }
+
+### 3. Generate an AI Move
 Calculates the best move for the computer.
 
 **Endpoint:** `POST /api/chess/bot-move`
@@ -105,10 +128,10 @@ Calculates the best move for the computer.
       "isCheckmate": false
     }
 
-### 3. Analyze a Game (Asynchronous)
+### 4. Analyze a Game (Asynchronous)
 Since analyzing a 40-move game at depth 5 can take a long time, this feature uses an async polling pattern to prevent HTTP timeouts.
 
-#### Step 3a: Start the Analysis
+#### Step 4a: Start the Analysis
 **Endpoint:** `POST /api/chess/analyze/start`
 
 **Request Body:**
@@ -128,7 +151,7 @@ Since analyzing a 40-move game at depth 5 can take a long time, this feature use
       "message": "Start analizing"
     }
 
-#### Step 3b: Check Analysis Status (Polling)
+#### Step 4b: Check Analysis Status (Polling)
 The client should poll this endpoint every 5-10 seconds until the status is "Completed".
 
 **Endpoint:** `GET /api/chess/analyze/status/{jobId}`

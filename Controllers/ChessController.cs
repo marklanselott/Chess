@@ -65,6 +65,47 @@ public class ChessController : ControllerBase
     }
 
 
+    [HttpPost("legal-moves")]
+    public IActionResult GetLegalMoves([FromBody] LegalMovesRequest request)
+    {
+        try
+        {
+            if (request.From.Length != 2)
+                return BadRequest(new LegalMovesResponse { Message = "Неправильний формат." });
+
+            string[] fenParts = request.Fen.Split(' ');
+            PieceColor currentTurn = fenParts[1] == "w" ? PieceColor.White : PieceColor.Black;
+
+            Board board = new Board();
+            board.LoadFromFen(request.Fen);
+            GameManager game = new GameManager(board, currentTurn);
+
+            int fromX = char.ToLower(request.From[0]) - 'a';
+            int fromY = 8 - (int)char.GetNumericValue(request.From[1]);
+            Position fromPos = new Position(fromX, fromY);
+
+            var legalMoves = game.GetLegalMoves(fromPos);
+
+            List<string> resultMoves = new List<string>();
+            foreach (var pos in legalMoves)
+            {
+                string squareStr = $"{(char)('a' + pos.X)}{8 - pos.Y}";
+                resultMoves.Add(squareStr);
+            }
+
+            return Ok(new LegalMovesResponse
+            {
+                LegalMoves = resultMoves,
+                Message = "Успіх"
+            });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new LegalMovesResponse { Message = $"Помилка: {ex.Message}" });
+        }
+    }
+
+
     [HttpPost("bot-move")]
     public IActionResult MakeBotMove([FromBody] BotMoveRequest request)
     {
