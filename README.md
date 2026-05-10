@@ -102,7 +102,7 @@ Returns a list of all valid squares a piece can move to from a given starting sq
         "e3",
         "e4"
       ],
-      "message": "Успіх"
+      "message": "Success"
     }
 
 ### 3. Generate an AI Move
