@@ -30,8 +30,10 @@ class SearchUser(BaseModel):
     limit: int
 
 class StartOpponentSearch(BaseModel):
-    id: UUID
-    user_id: UUID
-    status: str
-    oponent: UUID | None = None
+    user: User
+    oponent: User | None = None
+
+class SearchedOpponent(BaseModel):
+    user: User
+    oponent: User | None = None
 

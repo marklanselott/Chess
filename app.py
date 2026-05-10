@@ -1,12 +1,19 @@
 from moduls.friends import router as friends_router
 from moduls.user import router as user_router
 from moduls.game import router as game_router
+from contextlib import asynccontextmanager
 from auth import router as auth_router
 from fastapi import FastAPI, APIRouter
 from db import init
 
 api = APIRouter(prefix="/api")
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await init.init_models()
+    yield
+
+app = FastAPI(lifespan=lifespan)
 
 api.include_router(friends_router, prefix="/friends")
 api.include_router(auth_router, prefix="/auth")
