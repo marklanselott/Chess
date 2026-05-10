@@ -3,6 +3,8 @@ from config import apiId, apiHash, botToken, base_url, maxname, minname
 from menus import level, authreg, main_menu, play_menu, profile_menu, remake_back, remake_name, friend_menu, friend_back
 import requests
 import api
+from chess_handler import ChessTest
+import asyncio
 
 user_state = {}
 
@@ -478,6 +480,60 @@ async def handle_requests_menu(event):
     ]
     await event.edit(text, buttons=buttons)
 
+@bot.on(events.CallbackQuery(pattern=r"acc_(.+)"))
+async def handle_accept_request(event):
+    request_id = event.pattern_match.group(1).decode('utf-8')
+    token = api.get_token()
+    
+    url = f"{base_url.rstrip('/')}/api/friends/update_request"
+    
+    # Статус True — принимаем заявку
+    payload = {
+        "request_id": request_id,
+        "status": True
+    }
+    
+    try:
+        res = requests.post(url, params={"token": token}, json=payload)
+        
+        if res.status_code == 200:
+            await event.answer("✅ Заявка принята! Теперь вы друзья.", alert=True)
+            await event.edit("✅ **Заявка в друзья принята!**", buttons=None) # Убираем кнопки из сообщения
+        else:
+            print(f"Ошибка принятия: {res.text}")
+            await event.answer(f"❌ Ошибка сервера: {res.status_code}", alert=True)
+            
+    except Exception as e:
+        print(f"Ошибка в handle_accept_request: {e}")
+        await event.answer("⚠️ Ошибка соединения с сервером.", alert=True)
+
+@bot.on(events.CallbackQuery(pattern=r"rej_(.+)"))
+async def handle_reject_request(event):
+    request_id = event.pattern_match.group(1).decode('utf-8')
+    token = api.get_token()
+    
+    url = f"{base_url.rstrip('/')}/api/friends/update_request"
+    
+    # Статус False — отклоняем/удаляем заявку
+    payload = {
+        "request_id": request_id,
+        "status": False
+    }
+    
+    try:
+        res = requests.post(url, params={"token": token}, json=payload)
+        
+        if res.status_code == 200:
+            await event.answer("❌ Заявка отклонена.", alert=True)
+            await event.edit("❌ **Заявка в друзья отклонена.**", buttons=None)
+        else:
+            print(f"Ошибка отклонения: {res.text}")
+            await event.answer(f"❌ Ошибка сервера: {res.status_code}", alert=True)
+            
+    except Exception as e:
+        print(f"Ошибка в handle_reject_request: {e}")
+        await event.answer("⚠️ Ошибка соединения с сервером.", alert=True)
+
 # входящие заявки
 @bot.on(events.CallbackQuery(data="requests_in"))
 async def show_incoming(event):
@@ -559,6 +615,31 @@ async def show_outgoing(event):
         print(f"Ошибка в show_outgoing: {e}")
         await event.answer("⚠️ Ошибка загрузки", alert=True)
 
+@bot.on(events.CallbackQuery(pattern=r"can_(.+)"))
+async def handle_cancel_request(event):
+    # Достаем ID из нажатой кнопки
+    request_id = event.pattern_match.group(1).decode('utf-8')
+    
+    token = api.get_token()
+    
+    # Формируем URL (убедись, что base_url у тебя определен в коде)
+    url = f"{base_url.rstrip('/')}/api/friends/cancel_request/request_id/{request_id}"
+    
+    try:
+        # Отправляем запрос
+        res = requests.get(url, params={"token": token})
+        
+        if res.status_code == 200:
+            await event.answer("✅ Заявка отозвана!", alert=True)
+            # Вызываем твою функцию показа списка, чтобы обновить меню
+            await show_outgoing(event)
+        else:
+            await event.answer(f"❌ Ошибка API: {res.status_code}", alert=True)
+            
+    except Exception as e:
+        print(f"Ошибка при выполнении запроса: {e}")
+        await event.answer("⚠️ Ошибка сервера", alert=True)
+
 @bot.on(events.CallbackQuery(data="unfriend_list"))
 async def show_unfriend_menu(event):
     token = api.get_token()
@@ -596,57 +677,18 @@ async def handle_unfriend_action(event):
     target_user_id = event.pattern_match.group(1).decode('utf-8')
     token = api.get_token()
     
-    me = api.get_user(token, event.sender_id)
-    my_uuid = me["searched"][0].get("id")
+    # Просто шлем ID того, кого хотим удалить, со статусом False
+    # (Но это заработает ТОЛЬКО после фикса в бэкенде выше)
+    res = requests.post(
+        f"{base_url}/api/friends/update_request", 
+        params={"token": token}, 
+        json={"request_id": target_user_id, "status": False}
+    )
     
-    # Ссылки на твои заявки
-    url_out = f"{base_url.rstrip('/')}/api/friends/get_requests_my/user_id/{my_uuid}"
-    url_in = f"{base_url.rstrip('/')}/api/friends/get_requests_for_me/user_id/{my_uuid}"
-    
-    try:
-        # 1. Проверяем ИСХОДЯЩИЕ
-        res_out = requests.get(url_out, params={"token": token})
-        found_req = None
-        
-        if res_out.status_code == 200:
-            reqs_out = res_out.json()
-            for r in reqs_out:
-                # Проверяем ID друга в исходящей заявке
-                if r.get("friend", {}).get("id") == target_user_id:
-                    found_req = r
-                    break
-        
-        # 2. Если не нашли, проверяем ВХОДЯЩИЕ
-        if not found_req:
-            res_in = requests.get(url_in, params={"token": token})
-            if res_in.status_code == 200:
-                reqs_in = res_in.json()
-                for r in reqs_in:
-                    # Входящая: отправитель — r['user'], ты — r['friend']
-                    if r.get("user", {}).get("id") == target_user_id:
-                        found_req = r
-                        break
-
-        if found_req:
-            real_request_id = found_req.get("id")
-            print(f"FOUND REAL ID: {real_request_id}")
-            
-            update_url = f"{base_url.rstrip('/')}/api/friends/update_request"
-            final_res = requests.post(update_url, params={"token": token}, 
-                                     json={"request_id": real_request_id, "status": False})
-            
-            if final_res.status_code == 200:
-                await event.answer("✅ Друг удален!", alert=True)
-                await show_unfriend_menu(event)
-                return
-            else:
-                print(f"FAIL UPDATE: {final_res.text}")
-
-        await event.answer("❌ Не удалось найти ID связи", alert=True)
-        
-    except Exception as e:
-        print(f"CRITICAL ERROR: {e}")
-        await event.answer("⚠️ Ошибка поиска", alert=True)
+    if res.status_code == 200:
+        await event.answer("✅ Удалено!", alert=True)
+    else:
+        await event.answer("❌ Бэкенд все еще отклоняет удаление", alert=True)
 
 # Назад из друзей
 @bot.on(events.CallbackQuery(data="friend_back"))
@@ -787,6 +829,129 @@ async def profileback(event:events.CallbackQuery.Event):
 async def choosecolor(event:events.CallbackQuery.Event):
     await event.edit("Выберите уровень сложности", buttons=level)
 
+# Глобальные переменные для управления тестом
+current_test = ChessTest()
+last_msg_event = None
+waiting_for_coords = False 
+current_legal_moves = [] 
+
+# Флаг активации консоли
+console_active = asyncio.Event()
+
+async def console_listener():
+    """Слушает консоль только когда игра активна"""
+    global last_msg_event, waiting_for_coords, current_legal_moves
+    while True:
+        # Ждем, пока флаг станет True
+        await console_active.wait()
+        
+        # Динамический prompt в зависимости от состояния
+        prompt = "КОНСОЛЬ (Введи FEN): " if not waiting_for_coords else "КОНСОЛЬ (Введи ходы e2,e4): "
+        
+        user_input = await asyncio.get_event_loop().run_in_executor(None, input, prompt)
+        
+        # Если пока мы вводили, консоль деактивировали — игнорируем
+        if not console_active.is_set():
+            continue
+
+        if not last_msg_event:
+            continue
+
+        try:
+            if "/" in user_input:
+                current_test.set_fen(user_input)
+                current_test.selected = None
+                waiting_for_coords = False
+                current_legal_moves = []
+                await last_msg_event.edit(
+                    f"FEN обновлен через консоль!\n`{current_test.fen}`",
+                    buttons=current_test.get_buttons()
+                )
+                print(f"Доска обновлена.")
+
+            elif waiting_for_coords:
+                raw_moves = user_input.replace(" ", "").split(",")
+                legal_coords = []
+                for m in raw_moves:
+                    coord = current_test.notation_to_coords(m)
+                    if coord:
+                        legal_coords.append(coord)
+                
+                if legal_coords:
+                    current_legal_moves = legal_coords
+                    await last_msg_event.edit(
+                        f"Получены ходы: **{user_input}**",
+                        buttons=current_test.get_buttons(selected=current_test.selected, legal_moves=legal_coords)
+                    )
+                else:
+                    print("Ошибка формата координат.")
+            
+        except Exception as e:
+            print(f"Ошибка консоли: {e}")
+
+@bot.on(events.CallbackQuery(data="easy"))
+async def start_test(event):
+    global last_msg_event, waiting_for_coords, current_legal_moves
+    last_msg_event = event
+    current_test.selected = None
+    waiting_for_coords = False
+    current_legal_moves = []
+    
+    # Включаем консоль
+    console_active.set()
+    
+    await event.edit(
+        f"Игра началась.\n`{current_test.fen}`\n\nВыбери фигуру (или введи новый FEN в консоль):",
+        buttons=current_test.get_buttons()
+    )
+
+@bot.on(events.CallbackQuery(pattern=r"c:(\d+):(\d+)"))
+async def handle_click(event):
+    global last_msg_event, waiting_for_coords, current_legal_moves
+    last_msg_event = event
+    r, c = map(int, event.pattern_match.groups())
+    
+    if waiting_for_coords:
+        # Отмена выбора
+        if current_test.selected == (r, c):
+            current_test.selected = None
+            waiting_for_coords = False
+            current_legal_moves = []
+            await event.edit(buttons=current_test.get_buttons())
+            await event.answer("Отмена")
+            return
+
+        # Ход (любой клик после выбора фигуры воспринимаем как попытку хода)
+        new_fen = current_test.move(current_test.selected, (r, c))
+        current_test.selected = None
+        waiting_for_coords = False
+        current_legal_moves = []
+        
+        await event.edit(
+            f"Ход сделан!\n`{new_fen}`", 
+            buttons=current_test.get_buttons()
+        )
+        await event.answer("ОК")
+    
+    else:
+        # Выбор фигуры
+        if current_test.board[r][c] != '.':
+            current_test.selected = (r, c)
+            waiting_for_coords = True
+            await event.edit(
+                f"Фигура выбрана. Жду ходы в консоли (напр. e4, d5):",
+                buttons=current_test.get_buttons(selected=(r, c))
+            )
+            await event.answer("Жду консоль")
+        else:
+            await event.answer("Там пусто")
+
+# Обязательно добавь выключение консоли при возврате в меню, если оно есть
+@bot.on(events.CallbackQuery(data="play_back"))
+async def stop_console(event):
+    console_active.clear()
+    # Твой код возврата в меню
+
 # @bot.on(events.CallbackQuery(data="white"))
 # async def white(event:events.CallbackQuery.Event):
 #     await event.edit("В разработке...", buttons=main_menu)
@@ -796,7 +961,7 @@ async def choosecolor(event:events.CallbackQuery.Event):
 # async def black(event:events.CallbackQuery.Event):
 #     await event.edit("В разработке...", buttons=main_menu)
 
-
+bot.loop.create_task(console_listener())
 bot.run_until_disconnected()
 
 """
