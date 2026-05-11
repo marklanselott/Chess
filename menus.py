@@ -22,6 +22,7 @@ black = Button.inline("⚫", data="black")
 easy = Button.inline("Лёгкий", data="easy")
 medium = Button.inline("Средний", data="medium")
 hard = Button.inline("Сложный", data="hard")
+cancel_search_btn = Button.inline("❌ Отменить поиск", data="cancel_search")
 
 
 authreg = [auth, reg]
@@ -54,5 +55,6 @@ color = [white, black]
 level = [
     [easy],
     [medium],
-    [hard]
+    [hard],
+    [play_back]
 ]

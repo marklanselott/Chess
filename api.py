@@ -82,3 +82,20 @@ def update_friend_request(token: str, request_id: str, status: bool):
 def cancel_friend_request(token: str, request_id: str):
     params = {"token": token}
     return requests.get(f"{base_url.rstrip('/')}/api/friends/cancel_request/request_id/{request_id}", params=params)
+
+
+def start_search_opponent(token: str, user_id: str):
+    url = f"{base_url.rstrip('/')}/api/oponents/search/start"
+    return requests.post(url, params={"user_id": user_id, "token": token}, timeout=10)
+
+def await_opponent(token: str, user_id: str):
+    url = f"{base_url.rstrip('/')}/api/oponents/await"
+    try:
+        with requests.get(url, params={"user_id": user_id, "token": token}, timeout=120, stream=True) as res:
+            return res.json() if res.status_code == 200 else None
+    except:
+        return None
+
+def stop_search_opponent(token: str, user_id: str):
+    url = f"{base_url.rstrip('/')}/api/oponents/search/stop"
+    return requests.post(url, params={"user_id": user_id, "token": token}, timeout=10)
