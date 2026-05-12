@@ -53,6 +53,7 @@ public class ChessController : ControllerBase
             {
                 IsLegal = true,
                 NewFen = game.Board.GetFen(nextTurn),
+                IsCheck = game.IsCheck,
                 IsCheckmate = game.IsCheckmate,
                 IsDraw = game.IsStalemate,
                 Message = "Succes move"
@@ -134,6 +135,7 @@ public class ChessController : ControllerBase
                 NewFen = game.Board.GetFen(nextTurn),
                 MoveFrom = fromStr,
                 MoveTo = toStr,
+                IsCheck = game.IsCheck,
                 IsCheckmate = game.IsCheckmate
             });
         }

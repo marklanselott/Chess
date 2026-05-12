@@ -11,6 +11,7 @@ public class MoveResponse
 {
     public bool IsLegal { get; set; }        
     public string? NewFen { get; set; }      
+    public bool IsCheck { get; set; }
     public bool IsCheckmate { get; set; }    
     public bool IsDraw { get; set; }         
     public string? Message { get; set; }     
@@ -28,6 +29,7 @@ public class BotMoveResponse
     public string NewFen { get; set; } = string.Empty;
     public string MoveFrom { get; set; } = string.Empty; 
     public string MoveTo { get; set; } = string.Empty;
+    public bool IsCheck { get; set; }
     public bool IsCheckmate { get; set; }
 }
 
