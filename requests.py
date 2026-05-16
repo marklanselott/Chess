@@ -46,3 +46,7 @@ class UpdateUser(BaseModel):
     phone: int       | None = None
     email: str       | None = None
 
+class GetBoard(BaseModel):
+    game_id: UUID
+
+

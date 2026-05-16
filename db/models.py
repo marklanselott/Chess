@@ -56,9 +56,28 @@ class OpponentSearch(Base):
     user_id = Column(UUID, ForeignKey("users.id"), nullable=False)
     rating = Column(Integer, nullable=False)
     status = Column(SQLEnum(GameSessionStatus), default=GameSessionStatus.Searching)
-    duo = Column(UUID, nullable=True)
+    game_id = Column(UUID, nullable=True)
+
+class Games(Base):
+    __tablename__ = "games"
+
+    id = Column(UUID, primary_key=True, index=True, default=uuid.uuid4)
+    white_id = Column(UUID, ForeignKey("users.id"), nullable=False)
+    black_id = Column(UUID, ForeignKey("users.id"), nullable=False)
+    result = Column(String, nullable=True)
+    result_reason = Column(String, nullable=True)
+    winner_id = Column(UUID, ForeignKey("users.id"), nullable=True)
+    loser_id = Column(UUID, ForeignKey("users.id"), nullable=True)
+    finished_at = Column(Integer, nullable=True)
 
 
+class GameMove(Base):
+    __tablename__ = "game_moves"
+
+    id = Column(UUID, primary_key=True, index=True, default=uuid.uuid4)
+    game_id = Column(UUID, ForeignKey("games.id"), nullable=False)
+    fen = Column(String, nullable=False)
+    step = Column(Integer, nullable=False)
 
 # class Session(Base):
 #     __tablename__ = "sessions"

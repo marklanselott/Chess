@@ -1,19 +1,22 @@
 from responses import SearchUser as UserResponseSearch
+from responses import UserStats as UserStatsResponse
 from fastapi import APIRouter, HTTPException, Depends
 from requests import UpdateUser as UpdateUserRequest
 from requests import SearchUser as UserRequestSearch
 from requests import RemoveUser as RemoveUserRequest
-from db.models import User, UserRole, Friendship
+from db.models import GameMove, Games, OpponentSearch, User, UserRole, Friendship
 from sqlalchemy.ext.asyncio import AsyncSession
 from requests import CreateUser as RegisterUser
 from responses import User as UserResponse
-from sqlalchemy import select, delete
+from sqlalchemy import or_, select, delete
 from db.database import get_db
 from auth import verify_token
+from utils import get_user_or_404, setup_logger, user_to_response
 from datetime import datetime
 import os
 
 router = APIRouter(dependencies=[Depends(verify_token)])
+logger = setup_logger(__name__)
 
 @router.post("/search/", response_model=UserResponseSearch, responses={
     200: {"description": "Successful search"},
@@ -52,14 +55,7 @@ async def search(search_filter: UserRequestSearch, session: AsyncSession = Depen
         users = []
 
     return UserResponseSearch(
-        searched=[
-            UserResponse(
-                id=user.id, unique=user.unique, first_name=user.first_name,
-                middle_name=user.middle_name, last_name=user.last_name,
-                phone=user.phone, email=user.email, tg_id=user.tg_id,
-                rating=user.rating, registryed_at=datetime.fromtimestamp(user.registryed_at)
-            ) for user in users
-        ],
+        searched=[user_to_response(user) for user in users],
         start=search_filter.start,
         limit=15
     )
@@ -69,11 +65,7 @@ async def search(search_filter: UserRequestSearch, session: AsyncSession = Depen
     400: {"description": "No changes detected or unique identifier already exists"}
 })
 async def update(update_data: UpdateUserRequest, user_id: str, session: AsyncSession = Depends(get_db)):
-    result = await session.execute(select(User).where(User.id == user_id))
-    user = result.scalar_one_or_none()
-
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+    user = await get_user_or_404(session, user_id)
 
     changed = False
 
@@ -108,13 +100,9 @@ async def update(update_data: UpdateUserRequest, user_id: str, session: AsyncSes
 
     await session.commit()
     await session.refresh(user)
+    logger.info("User updated: user_id=%s", user.id)
 
-    return UserResponse(
-        id=user.id, unique=user.unique, first_name=user.first_name,
-        middle_name=user.middle_name, last_name=user.last_name,
-        phone=user.phone, email=user.email, tg_id=user.tg_id,
-        rating=user.rating, registryed_at=datetime.fromtimestamp(user.registryed_at)
-    )
+    return user_to_response(user)
 
 @router.post("/register", response_model=UserResponse, responses={
     200: {"description": "User registered successfully"},
@@ -135,13 +123,9 @@ async def register(data: RegisterUser, session: AsyncSession = Depends(get_db)):
     session.add(new_user)
     await session.commit()
     await session.refresh(new_user)
+    logger.info("User registered: user_id=%s unique=%s", new_user.id, new_user.unique)
 
-    return UserResponse(
-        id=new_user.id, unique=new_user.unique, first_name=new_user.first_name,
-        middle_name=new_user.middle_name, last_name=new_user.last_name,
-        phone=new_user.phone, email=new_user.email, tg_id=new_user.tg_id,
-        rating=new_user.rating, registryed_at=datetime.fromtimestamp(new_user.registryed_at)
-    )
+    return user_to_response(new_user)
 
 @router.post("/remove", responses={
     200: {"description": "User removed successfully"},
@@ -154,9 +138,21 @@ async def remove(data: RemoveUserRequest, session: AsyncSession = Depends(get_db
     if not user:
         raise HTTPException(status_code=404, detail="Unique identifier or password is incorrect")
 
+    games_result = await session.execute(
+        select(Games.id).where(or_(Games.white_id == user.id, Games.black_id == user.id))
+    )
+    game_ids = [row[0] for row in games_result.all()]
+
+    if game_ids:
+        await session.execute(delete(GameMove).where(GameMove.game_id.in_(game_ids)))
+        await session.execute(delete(Games).where(Games.id.in_(game_ids)))
+
+    await session.execute(delete(OpponentSearch).where(OpponentSearch.user_id == user.id))
     await session.execute(delete(Friendship).where(Friendship.user_id == user.id))
+    await session.execute(delete(Friendship).where(Friendship.friend_id == user.id))
     await session.delete(user)
     await session.commit()
+    logger.info("User removed: user_id=%s unique=%s games_removed=%s", user.id, user.unique, len(game_ids))
 
     raise HTTPException(status_code=200, detail="User removed successfully")
 
@@ -165,17 +161,48 @@ async def remove(data: RemoveUserRequest, session: AsyncSession = Depends(get_db
     404: {"description": "User not found"}
 })
 async def get_by_id(user_id: str, session: AsyncSession = Depends(get_db)):
-    result = await session.execute(select(User).where(User.id == user_id))
-    user = result.scalar_one_or_none()
+    user = await get_user_or_404(session, user_id)
+    return user_to_response(user)
 
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+@router.get("/stats/user_id/{user_id}", response_model=UserStatsResponse, responses={
+    200: {"description": "User stats found"},
+    404: {"description": "User not found"}
+})
+async def get_stats(user_id: str, session: AsyncSession = Depends(get_db)):
+    user = await get_user_or_404(session, user_id)
+    result = await session.execute(
+        select(Games).where(or_(Games.white_id == user.id, Games.black_id == user.id))
+    )
+    games = result.scalars().all()
 
-    return UserResponse(
-        id=user.id, unique=user.unique, first_name=user.first_name,
-        middle_name=user.middle_name, last_name=user.last_name,
-        phone=user.phone, email=user.email, tg_id=user.tg_id,
-        rating=user.rating, registryed_at=datetime.fromtimestamp(user.registryed_at)
+    wins = sum(1 for game in games if game.result == "win" and game.winner_id == user.id)
+    losses = sum(1 for game in games if game.result == "win" and game.loser_id == user.id)
+    draws = sum(1 for game in games if game.result == "draw")
+    games_finished = wins + losses + draws
+    games_total = len(games)
+    win_loss_ratio = round(wins / losses, 2) if losses else None
+    win_rate = round((wins / games_finished) * 100, 2) if games_finished else 0.0
+
+    logger.info(
+        "User stats requested: user_id=%s games=%s wins=%s losses=%s draws=%s",
+        user.id,
+        games_total,
+        wins,
+        losses,
+        draws,
+    )
+
+    return UserStatsResponse(
+        user=user_to_response(user),
+        games_total=games_total,
+        games_finished=games_finished,
+        games_active=games_total - games_finished,
+        wins=wins,
+        losses=losses,
+        draws=draws,
+        win_loss_ratio=win_loss_ratio,
+        win_rate=win_rate,
+        rating=user.rating,
     )
 
 @router.post("/rating", response_model=list[UserResponse], responses={
@@ -187,11 +214,5 @@ async def get_rating_players(start: int=0, session: AsyncSession = Depends(get_d
     result = await session.execute(stmt)
     users = result.scalars().all()
 
-    return [
-        UserResponse(
-            id=user.id, unique=user.unique, first_name=user.first_name,
-            middle_name=user.middle_name, last_name=user.last_name,
-            phone=user.phone, email=user.email, tg_id=user.tg_id,
-            rating=user.rating, registryed_at=datetime.fromtimestamp(user.registryed_at)
-        ) for user in users
-    ]
+    return [user_to_response(user) for user in users]
+

@@ -1,8 +1,10 @@
 from fastapi import APIRouter, Header, HTTPException, status
+from utils import setup_logger
 import os, time, jwt
 import responses
 
 router = APIRouter()
+logger = setup_logger(__name__)
 
 algorithm = os.getenv("ALGORITHM")
 secret_word = os.getenv("SECRET_WORD")
@@ -31,11 +33,13 @@ def verify_token(token: str):
 async def create_token_endpoint(token: str = Header(..., alias="token")):
     if token == secure_token:
         token_data = gen_token(token)
+        logger.info("JWT token created")
         return responses.CreateToken(
             jwt=token_data["token"], 
             exp=int(time.time() + expire_token_time)
         )
 
+    logger.warning("JWT token creation rejected")
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Invalid token provided"
