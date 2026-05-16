@@ -85,17 +85,93 @@ def cancel_friend_request(token: str, request_id: str):
 
 
 def start_search_opponent(token: str, user_id: str):
-    url = f"{base_url.rstrip('/')}/api/oponents/search/start"
-    return requests.post(url, params={"user_id": user_id, "token": token}, timeout=10)
+    url = f"{base_url.rstrip('/')}/api/opponents/search/start"
+    try:
+        return requests.post(url, params={"user_id": user_id, "token": token}, timeout=10)
+    except Exception as e:
+        print(f"Ошибка start_search_opponent: {e}")
+        return None
 
 def await_opponent(token: str, user_id: str):
-    url = f"{base_url.rstrip('/')}/api/oponents/await"
+    url = f"{base_url.rstrip('/')}/api/opponents/await"
     try:
-        with requests.get(url, params={"user_id": user_id, "token": token}, timeout=120, stream=True) as res:
-            return res.json() if res.status_code == 200 else None
-    except:
+        # УБРАЛИ stream=True, оставили чистый long-polling запрос
+        res = requests.get(url, params={"user_id": user_id, "token": token}, timeout=60)
+        
+        if res.status_code == 200:
+            return res.json()
+        elif res.status_code == 404:
+            return "404"  # Обязательно возвращаем строку, а не None!
+            
+        print(f"[API ДОКА] Сервер вернул код: {res.status_code}")
+        return None
+    except requests.exceptions.Timeout:
+        # Если библиотека requests отвалилась по таймауту в 60 сек — это нормально для лонг-поллинга
+        return "404"
+    except Exception as e:
+        print(f"Ошибка await_opponent: {e}")
         return None
 
 def stop_search_opponent(token: str, user_id: str):
-    url = f"{base_url.rstrip('/')}/api/oponents/search/stop"
-    return requests.post(url, params={"user_id": user_id, "token": token}, timeout=10)
+    url = f"{base_url.rstrip('/')}/api/opponents/search/stop"
+    try:
+        return requests.post(url, params={"user_id": user_id, "token": token}, timeout=10)
+    except Exception as e:
+        print(f"Ошибка stop_search_opponent: {e}")
+        return None
+
+def get_game_board(token: str, game_id: str):
+    # Метод получения доски по game_id
+    url = f"{base_url.rstrip('/')}/api/game/game"
+    try:
+        res = requests.get(url, params={"game_id": game_id, "token": token}, timeout=10)
+        return res.json() if res.status_code == 200 else None
+    except Exception as e:
+        print(f"Ошибка get_game_board: {e}")
+        return None
+
+
+def make_chess_move(token: str, game_id: str, from_to: str):
+    """
+    GET /api/game/move
+    Сделать ход (передаем строку движения, например 'e2e4')
+    """
+    url = f"{base_url.rstrip('/')}/api/game/move"
+    params = {
+        "game_id": game_id,
+        "from_to": from_to,
+        "token": token
+    }
+    try:
+        response = requests.get(url, params=params)
+        if response.status_code == 200:
+            return response.json()
+        else:
+            print(f"Ошибка GET /api/game/move [{response.status_code}]: {response.text}")
+            return None
+    except Exception as e:
+        print(f"Ошибка сети в make_chess_move: {e}")
+        return None
+
+
+def surrender_game(token: str, user_id: str):
+    """
+    POST /api/game/surrender
+    Сдаться в текущей игре
+    """
+    url = f"{base_url.rstrip('/')}/api/game/surrender"
+    # Так как параметры передаются в Query (судя по схеме параметров Swagger), используем params вместо json/data
+    params = {
+        "user_id": user_id,
+        "token": token
+    }
+    try:
+        response = requests.post(url, params=params)
+        if response.status_code == 200:
+            return response.json()  # Или response.text, если там возвращается просто строка "Successfully surrendered"
+        else:
+            print(f"Ошибка POST /api/game/surrender [{response.status_code}]: {response.text}")
+            return None
+    except Exception as e:
+        print(f"Ошибка сети в surrender_game: {e}")
+        return None
