@@ -10,8 +10,8 @@ from sqlalchemy.future import select
 from sqlalchemy import func, and_
 from db.database import get_db
 from auth import verify_token
-from moduls.game import Game
-from utils import get_user_or_404, setup_logger, user_to_response
+from moduls.game import Convert, Game
+from utils import get_game_or_404, get_last_move_or_404, get_user_or_404, setup_logger, user_to_response
 from uuid import uuid4, UUID
 import asyncio, os, random
 
@@ -51,6 +51,33 @@ async def get_game_opponent(session: AsyncSession, user_id: UUID, game_id: UUID)
     )
     return opponent.scalar_one_or_none()
 
+async def build_found_game_response(session: AsyncSession, user, user_opponent: OpponentSearch):
+    if not user_opponent.game_id:
+        return None
+
+    opponent_search = await get_game_opponent(session, user.id, user_opponent.game_id)
+    if not opponent_search:
+        return None
+
+    opponent = await get_user_or_404(session, opponent_search.user_id)
+    game = await get_game_or_404(session, user_opponent.game_id)
+    last_move = await get_last_move_or_404(session, user_opponent.game_id)
+
+    return SearchedOpponentResponse(
+        user=user_to_response(user),
+        opponent=user_to_response(opponent),
+        game=GameResponse(
+            id=game.id,
+            white=game.white_id,
+            black=game.black_id,
+            ai_difficulty=game.ai_difficulty,
+            board=GameResponse.Board(
+                fen=last_move.fen,
+                json=Convert.fen_to_json(last_move.fen)
+            )
+        )
+    )
+
 @router.post("/search/start", responses={
     200: {"description": "Successfully started searching for opponent"},
     404: {"description": "User not found"}
@@ -80,7 +107,7 @@ async def start_search_opponent(user_id: UUID, session: AsyncSession = Depends(g
 @router.get("/await", responses={
     200: {"description": "Successfully got opponent"},
     404: {"description": "User not found or opponent not found"}
-}, response_model=StartOpponentSearchResponse)
+}, response_model=SearchedOpponentResponse)
 async def await_opponent(user_id: str, session: AsyncSession = Depends(get_db)):
     user = await get_user_or_404(session, user_id)
     user_opponent = await get_opponent_search(session, user_id)
@@ -88,28 +115,26 @@ async def await_opponent(user_id: str, session: AsyncSession = Depends(get_db)):
     if not user_opponent:
         raise HTTPException(status_code=404, detail="Opponent search not found")
     
-    if user_opponent.status == GameSessionStatus.InGame:
-        raise HTTPException(status_code=404, detail="You can't wait for an opponent while in the game")
+    if user_opponent.status == GameSessionStatus.InGame and not user_opponent.game_id:
+        raise HTTPException(status_code=400, detail="Game session is missing game_id")
 
     async def find_opponent():
         while True:
-            result = SearchedOpponentResponse(
-                user=user_to_response(user),
-                opponent=None,
-                game=None
-            )
-
             user_opponent = await get_opponent_search(session, user_id)
             if not user_opponent:
                 return
             
             if user_opponent.status == GameSessionStatus.InGame and user_opponent.game_id:
-                opponent = await get_game_opponent(session, user_id, user_opponent.game_id)
-                if opponent:
-                    opponent = await get_user_or_404(session, opponent.user_id)
-                    result.opponent = user_to_response(opponent)
-                    yield result.model_dump_json() + "\n"
+                found_game = await build_found_game_response(session, user, user_opponent)
+                if found_game:
+                    yield found_game.model_dump_json() + "\n"
                     return
+
+            result = SearchedOpponentResponse(
+                user=user_to_response(user),
+                opponent=None,
+                game=None
+            )
 
             opponent = await random_uuid_in_rating_range(session, user_id, user.rating)
             

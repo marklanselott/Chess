@@ -1,5 +1,5 @@
 from responses import Game as GameResponse, SearchedOpponent
-from httpx import AsyncClient, ConnectError, RequestError
+from httpx import AsyncClient, RequestError, TimeoutException
 from fastapi import APIRouter, Depends, HTTPException, Query
 from responses import GameMove as GameMoveResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,6 +22,7 @@ from uuid import UUID, uuid4
 import os
 
 base_url = f"http://127.0.0.1:{os.getenv('CHESS_CORE_API_PORT', '4956')}"
+chess_core_timeout = float(os.getenv("CHESS_CORE_TIMEOUT", "120"))
 
 router = APIRouter(dependencies=[Depends(verify_token)])
 logger = setup_logger(__name__)
@@ -109,18 +110,28 @@ class Game:
         return from_, to_
 
     async def move(board: GameResponse.Board, from_: str, to_: str) -> dict:
-        async with AsyncClient() as client:
+        async with AsyncClient(timeout=chess_core_timeout) as client:
             json={"fen": board.fen, "from": from_, "to": to_}
-            response = await client.post(f"{base_url}/api/chess/move", json=json)
+            try:
+                response = await client.post(f"{base_url}/api/chess/move", json=json)
+            except TimeoutException:
+                raise HTTPException(status_code=504, detail="Chess core request timed out")
+            except RequestError:
+                raise HTTPException(status_code=503, detail="Chess core is unavailable")
 
             if response.status_code >= 400:
                 raise HTTPException(status_code=400, detail=response.text)
             return response.json()
 
     async def bot_move(board: GameResponse.Board, depth: int) -> dict:
-        async with AsyncClient() as client:
+        async with AsyncClient(timeout=chess_core_timeout) as client:
             json={"fen": board.fen, "depth": depth}
-            response = await client.post(f"{base_url}/api/chess/bot-move", json=json)
+            try:
+                response = await client.post(f"{base_url}/api/chess/bot-move", json=json)
+            except TimeoutException:
+                raise HTTPException(status_code=504, detail="Chess core request timed out")
+            except RequestError:
+                raise HTTPException(status_code=503, detail="Chess core is unavailable")
 
             if response.status_code >= 400:
                 raise HTTPException(status_code=400, detail=response.text)

@@ -2,9 +2,7 @@ from __future__ import annotations
 
 import argparse
 import os
-import subprocess
 import sys
-import time
 from pathlib import Path
 from uuid import uuid4
 
@@ -13,20 +11,23 @@ from dotenv import load_dotenv
 
 
 ROOT = Path(__file__).resolve().parents[1]
-START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 
 
 def api_base_url() -> str:
     return os.getenv("MAIN_API_BASE", f"http://127.0.0.1:{os.getenv('MAIN_API_PORT', '9538')}")
 
 
-def chess_core_base_url() -> str:
-    return os.getenv("CHESS_CORE_BASE", f"http://127.0.0.1:{os.getenv('CHESS_CORE_API_PORT', '4956')}")
+def api_timeout() -> float:
+    return float(os.getenv("MAIN_API_TIMEOUT", "130"))
 
 
 def request_json(response: httpx.Response, action: str) -> dict:
     if response.status_code >= 400:
-        raise RuntimeError(f"{action} failed: HTTP {response.status_code}\n{response.text}")
+        try:
+            detail = response.json().get("detail", response.text)
+        except ValueError:
+            detail = response.text
+        raise RuntimeError(f"{action} failed: HTTP {response.status_code}\n{detail}")
     return response.json()
 
 
@@ -123,52 +124,6 @@ def ask_ai_difficulty(default_depth: int) -> int:
             return int(value)
 
         print("Use a number from 1 to 5.")
-
-
-def chess_core_is_available(base_url: str) -> bool:
-    try:
-        response = httpx.post(
-            f"{base_url}/api/chess/move",
-            json={"fen": START_FEN, "from": "e2", "to": "e4"},
-            timeout=2,
-        )
-        return response.status_code == 200
-    except httpx.HTTPError:
-        return False
-
-
-def ensure_chess_core(base_url: str) -> subprocess.Popen | None:
-    if chess_core_is_available(base_url):
-        return None
-
-    chess_core_path = os.getenv("CHESS_CORE_API_PATH", "./chess_core/ChessAPI.dll")
-    print(f"Chess core is not running. Starting {chess_core_path}...")
-    process = subprocess.Popen(
-        ["dotnet", chess_core_path, "--urls", base_url],
-        cwd=ROOT,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-
-    for _ in range(20):
-        if chess_core_is_available(base_url):
-            print(f"Chess core started: {base_url}")
-            return process
-        time.sleep(0.5)
-
-    process.terminate()
-    raise RuntimeError("Chess core did not start")
-
-
-def stop_chess_core(process: subprocess.Popen | None) -> None:
-    if not process or process.poll() is not None:
-        return
-
-    process.terminate()
-    try:
-        process.wait(timeout=5)
-    except subprocess.TimeoutExpired:
-        process.kill()
 
 
 def fen_to_grid(fen: str) -> list[list[str]]:
@@ -296,14 +251,12 @@ def parse_args() -> argparse.Namespace:
         description="Show a chess board in terminal using the local Python API."
     )
     parser.add_argument("--base-url", default=api_base_url(), help="Python API base URL")
-    parser.add_argument("--chess-core-url", default=chess_core_base_url(), help="Chess core API base URL")
     parser.add_argument("--game-id", help="Show an existing game")
     parser.add_argument("--user-color", choices=["white", "black"], default="white")
     parser.add_argument("--move", help="Optional player move before rendering, for example e2e4")
     parser.add_argument("--ai-move", action="store_true", help="Ask AI to move before rendering")
     parser.add_argument("--depth", type=int, choices=range(1, 6), default=1, help="Default AI difficulty")
     parser.add_argument("--no-auto-ai", action="store_true", help="Do not ask AI to move after player moves")
-    parser.add_argument("--no-start-chess-core", action="store_true", help="Do not auto-start chess core")
     parser.add_argument("--once", action="store_true", help="Show the board once and exit")
     parser.add_argument("--keep", action="store_true", help="Keep the temporary user/game")
     return parser.parse_args()
@@ -315,13 +268,9 @@ def main() -> int:
 
     created_user = None
     token = None
-    chess_core_process = None
 
     try:
-        if not args.no_start_chess_core:
-            chess_core_process = ensure_chess_core(args.chess_core_url)
-
-        with httpx.Client(timeout=20) as client:
+        with httpx.Client(timeout=api_timeout()) as client:
             token = create_token(client, args.base_url)
 
             if args.game_id:
@@ -378,12 +327,11 @@ def main() -> int:
     finally:
         if created_user and token and not args.keep:
             try:
-                with httpx.Client(timeout=20) as client:
+                with httpx.Client(timeout=api_timeout()) as client:
                     remove_test_user(client, args.base_url, token, created_user["unique"])
                 print("Temporary user/game removed. Use --keep to leave it in the database.")
             except httpx.HTTPError as exc:
                 print(f"Temporary cleanup failed: {exc}", file=sys.stderr)
-        stop_chess_core(chess_core_process)
 
     return 0
 

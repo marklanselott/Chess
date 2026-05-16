@@ -92,10 +92,14 @@ def test_opponent_search_and_game_flow(api_client, test_users, cleanup_test_user
     assert user1_match["game"]["white"] != user1_match["game"]["black"]
     assert user1_match["game"]["board"]["fen"] == start_fen
 
-    check_step("Await while already in game is rejected")
-    user2_match = api_client.await_opponent_response(user2["id"], timeout=3)
-    assert user2_match.status_code == 404
-    assert "while in the game" in user2_match.text
+    check_step("Second player can receive the found game too")
+    user2_match = api_client.await_opponent(user2["id"], timeout=3)
+    assert user2_match["user"]["id"] == user2["id"]
+    assert user2_match["opponent"]["id"] == user1["id"]
+    assert user2_match["game"]["id"] == user1_match["game"]["id"]
+    assert user2_match["game"]["white"] == user1_match["game"]["white"]
+    assert user2_match["game"]["black"] == user1_match["game"]["black"]
+    assert user2_match["game"]["board"]["fen"] == start_fen
 
     check_step("Load created game board")
     game = api_client.get_board(user1_match["game"]["id"])
