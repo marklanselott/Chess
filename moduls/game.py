@@ -1,9 +1,9 @@
 from responses import Game as GameResponse, SearchedOpponent
 from httpx import AsyncClient, ConnectError, RequestError
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from responses import GameMove as GameMoveResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from db.models import GameSessionStatus, GameMove, OpponentSearch
+from db.models import GameSessionStatus, GameMove, Games, OpponentSearch, UserColor
 from sqlalchemy.future import select
 from db.database import get_db
 from auth import verify_token
@@ -13,11 +13,12 @@ from utils import (
     clear_game_sessions,
     get_game_or_404,
     get_last_move_or_404,
+    get_or_create_ai_user,
     get_user_or_404,
     setup_logger,
     user_to_response,
 )
-from uuid import UUID
+from uuid import UUID, uuid4
 import os
 
 base_url = f"http://127.0.0.1:{os.getenv('CHESS_CORE_API_PORT', '4956')}"
@@ -116,6 +117,36 @@ class Game:
                 raise HTTPException(status_code=400, detail=response.text)
             return response.json()
 
+    async def bot_move(board: GameResponse.Board, depth: int) -> dict:
+        async with AsyncClient() as client:
+            json={"fen": board.fen, "depth": depth}
+            response = await client.post(f"{base_url}/api/chess/bot-move", json=json)
+
+            if response.status_code >= 400:
+                raise HTTPException(status_code=400, detail=response.text)
+            return response.json()
+
+
+def get_payload_value(payload: dict, camel_case: str, pascal_case: str, default=None):
+    return payload.get(camel_case, payload.get(pascal_case, default))
+
+
+def turn_to_user_color(fen: str) -> UserColor:
+    return UserColor.WHITE if fen.split()[1] == "w" else UserColor.BLACK
+
+
+def participant_color(game, user_id: UUID) -> UserColor | None:
+    if game.white_id == user_id:
+        return UserColor.WHITE
+    if game.black_id == user_id:
+        return UserColor.BLACK
+    return None
+
+
+def game_ai_difficulty(game) -> int:
+    difficulty = game.ai_difficulty or 3
+    return max(1, min(5, int(difficulty)))
+
 @router.get("/game", responses={
     200: {"description": "Get current chess board state"},
     400: {"description": "Invalid game ID"},
@@ -134,10 +165,92 @@ async def get_board(game_id: UUID, session: AsyncSession = Depends(get_db)):
             id=game_id,
             white=game.white_id,
             black=game.black_id,
+            ai_difficulty=game.ai_difficulty,
             board=GameResponse.Board(
                 fen=move.fen,
                 json=Convert.fen_to_json(move.fen)
             )
+        )
+    )
+
+@router.post("/ai/start", responses={
+    200: {"description": "Successfully started game with AI"},
+    400: {"description": "User is already searching or in game"},
+    404: {"description": "User not found"}
+}, response_model=SearchedOpponent)
+async def start_ai_game(
+    user_id: UUID,
+    user_color: UserColor = UserColor.WHITE,
+    ai_difficulty: int = Query(default=3, ge=1, le=5),
+    session: AsyncSession = Depends(get_db)
+):
+    user = await get_user_or_404(session, user_id)
+    active_session = (await session.execute(
+        select(OpponentSearch).where(OpponentSearch.user_id == user_id)
+    )).scalar_one_or_none()
+
+    if active_session:
+        cases = {
+            GameSessionStatus.Searching: "You are already searching for an opponent.",
+            GameSessionStatus.InGame: "While you are in the game, you cannot start a game with AI."
+        }
+        raise HTTPException(
+            status_code=400,
+            detail=cases.get(active_session.status, f"Unknown status >>> {active_session.status}")
+        )
+
+    ai_user = await get_or_create_ai_user(session)
+    if ai_user.id == user.id:
+        raise HTTPException(status_code=400, detail="AI user cannot start a game with itself")
+
+    game_id = uuid4()
+    board = Game.board()
+
+    if user_color == UserColor.WHITE:
+        white_id = user.id
+        black_id = ai_user.id
+    else:
+        white_id = ai_user.id
+        black_id = user.id
+
+    session.add(Games(
+        id=game_id,
+        white_id=white_id,
+        black_id=black_id,
+        ai_difficulty=ai_difficulty
+    ))
+    await session.flush()
+
+    session.add(GameMove(
+        game_id=game_id,
+        fen=board.fen,
+        step=0
+    ))
+    session.add(OpponentSearch(
+        user_id=user.id,
+        rating=user.rating,
+        status=GameSessionStatus.InGame,
+        game_id=game_id
+    ))
+    await session.commit()
+
+    logger.info(
+        "AI game started: game_id=%s user_id=%s ai_user_id=%s difficulty=%s",
+        game_id,
+        user.id,
+        ai_user.id,
+        ai_difficulty,
+    )
+
+    return SearchedOpponent(
+        user=user_to_response(user),
+        opponent=user_to_response(ai_user),
+        game=GameResponse(
+            id=game_id,
+            white=white_id,
+            black=black_id,
+            ai_difficulty=ai_difficulty,
+            board=board
         )
     )
 
@@ -204,6 +317,7 @@ async def move_piece(game_id: UUID, from_to: str, session: AsyncSession = Depend
                 id=game_id,
                 white=game.white_id,
                 black=game.black_id,
+                ai_difficulty=game.ai_difficulty,
                 board=board
             ),
             result=result
@@ -214,6 +328,109 @@ async def move_piece(game_id: UUID, from_to: str, session: AsyncSession = Depend
         import traceback
         error_msg = traceback.format_exc()
         logger.error("Error in move_piece: %s", error_msg)
+        raise HTTPException(status_code=400, detail=str(e) + "\n" + error_msg)
+
+@router.post("/ai/move", responses={
+    200: {"description": "Successfully made an AI move"},
+    400: {"description": "Invalid game ID or AI move request"},
+    404: {"description": "Game not found"}
+}, response_model=GameMoveResponse)
+async def move_ai(
+    game_id: UUID,
+    session: AsyncSession = Depends(get_db)
+):
+    try:
+        game = await get_game_or_404(session, game_id)
+        if game.result:
+            raise HTTPException(status_code=400, detail="Game already finished")
+
+        ai_user = await get_or_create_ai_user(session)
+        ai_color = participant_color(game, ai_user.id)
+        if ai_color is None:
+            raise HTTPException(status_code=400, detail="Game is not an AI game")
+
+        last_move = await get_last_move_or_404(session, game_id)
+        moving_color = turn_to_user_color(last_move.fen)
+        if moving_color != ai_color:
+            raise HTTPException(status_code=400, detail="It is not AI's turn")
+
+        board = GameResponse.Board(
+            fen=last_move.fen,
+            json=Convert.fen_to_json(last_move.fen)
+        )
+        ai_difficulty = game_ai_difficulty(game)
+        bot_response = await Game.bot_move(board, ai_difficulty)
+        new_fen = get_payload_value(bot_response, "newFen", "NewFen")
+        move_from = get_payload_value(bot_response, "moveFrom", "MoveFrom")
+        move_to = get_payload_value(bot_response, "moveTo", "MoveTo")
+
+        if not new_fen or not move_from or not move_to:
+            raise HTTPException(status_code=400, detail=f"Chess core returned an invalid AI move: {bot_response}")
+
+        board = GameResponse.Board(
+            fen=new_fen,
+            json=Convert.fen_to_json(new_fen)
+        )
+        session.add(GameMove(
+            game_id=game_id,
+            fen=board.fen,
+            step=last_move.step + 1
+        ))
+
+        chess_core = {
+            "isLegal": True,
+            "moveFrom": move_from,
+            "moveTo": move_to,
+            "isCheck": bool(get_payload_value(bot_response, "isCheck", "IsCheck", False)),
+            "isCheckmate": bool(get_payload_value(bot_response, "isCheckmate", "IsCheckmate", False)),
+            "isDraw": bool(get_payload_value(bot_response, "isDraw", "IsDraw", False)),
+        }
+        result = None
+
+        if chess_core["isCheckmate"]:
+            winner_id = game.white_id if moving_color == UserColor.WHITE else game.black_id
+            loser_id = game.black_id if moving_color == UserColor.WHITE else game.white_id
+            winner = await get_user_or_404(session, winner_id)
+            loser = await get_user_or_404(session, loser_id)
+            result = await apply_game_result(session, game, winner, loser, reason="checkmate")
+            await clear_game_sessions(session, game_id)
+            logger.info(
+                "AI game finished by checkmate: game_id=%s winner_id=%s loser_id=%s",
+                game_id,
+                winner_id,
+                loser_id,
+            )
+        elif chess_core["isDraw"]:
+            await apply_game_draw(session, game, reason="draw")
+            await clear_game_sessions(session, game_id)
+            logger.info("AI game finished by draw: game_id=%s", game_id)
+
+        await session.commit()
+        logger.info(
+            "AI move processed: game_id=%s from_to=%s difficulty=%s",
+            game_id,
+            [move_from, move_to],
+            ai_difficulty,
+        )
+
+        return GameMoveResponse(
+            chess_core=chess_core,
+            from_to=[move_from, move_to],
+            game=GameResponse(
+                id=game_id,
+                white=game.white_id,
+                black=game.black_id,
+                ai_difficulty=game.ai_difficulty,
+                board=board
+            ),
+            result=result
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        error_msg = traceback.format_exc()
+        logger.error("Error in move_ai: %s", error_msg)
         raise HTTPException(status_code=400, detail=str(e) + "\n" + error_msg)
 
 @router.post("/surrender", responses={

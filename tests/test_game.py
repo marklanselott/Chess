@@ -46,6 +46,10 @@ def test_opponent_search_and_game_flow(api_client, test_users, cleanup_test_user
     missing_surrender = api_client.surrender_response(missing_user_id)
     assert missing_surrender.status_code == 404
 
+    check_step("AI game for missing user returns 404")
+    missing_ai_game = api_client.start_ai_game_response(missing_user_id)
+    assert missing_ai_game.status_code == 404
+
     check_step("Stats for missing user returns 404")
     missing_stats = api_client.get_user_stats_response(missing_user_id)
     assert missing_stats.status_code == 404
@@ -142,6 +146,48 @@ def test_opponent_search_and_game_flow(api_client, test_users, cleanup_test_user
     user2_stats = api_client.get_user_stats(user2["id"])
     assert_stats(user1_stats, games=1, wins=0, losses=1, draws=0, rating=surrender["result"]["loser"]["after"])
     assert_stats(user2_stats, games=1, wins=1, losses=0, draws=0, rating=surrender["result"]["winner"]["after"])
+
+    check_step("Create an AI game and request an AI move through Chess Core")
+    invalid_ai_difficulty = api_client.start_ai_game_response(user3["id"], user_color="white", ai_difficulty=6)
+    assert invalid_ai_difficulty.status_code == 422
+
+    ai_match = api_client.start_ai_game(user3["id"], user_color="white", ai_difficulty=4)
+    ai_game_id = ai_match["game"]["id"]
+    assert ai_match["user"]["id"] == user3["id"]
+    assert ai_match["opponent"]["unique"] == "chess_ai"
+    assert ai_match["game"]["white"] == user3["id"]
+    assert ai_match["game"]["black"] == ai_match["opponent"]["id"]
+    assert ai_match["game"]["board"]["fen"] == start_fen
+    assert ai_match["game"]["ai_difficulty"] == 4
+
+    ai_before_player = api_client.move_ai_response(ai_game_id)
+    assert ai_before_player.status_code == 400
+    assert "not AI's turn" in ai_before_player.text
+
+    search_while_ai_game = api_client.start_search_opponent_response(user3["id"])
+    assert search_while_ai_game.status_code == 400
+    assert "in the game" in search_while_ai_game.text
+
+    player_ai_move = api_client.move_piece(ai_game_id, "e2e4")
+    assert player_ai_move["chess_core"]["isLegal"] is True
+    assert player_ai_move["game"]["ai_difficulty"] == 4
+
+    ai_move = api_client.move_ai(ai_game_id)
+    assert ai_move["chess_core"]["isLegal"] is True
+    assert ai_move["chess_core"]["moveFrom"]
+    assert ai_move["chess_core"]["moveTo"]
+    assert ai_move["game"]["ai_difficulty"] == 4
+    assert ai_move["from_to"] == [
+        ai_move["chess_core"]["moveFrom"],
+        ai_move["chess_core"]["moveTo"],
+    ]
+    assert ai_move["game"]["board"]["fen"] != player_ai_move["game"]["board"]["fen"]
+
+    ai_game_after_move = api_client.get_board(ai_game_id)
+    assert ai_game_after_move["game"]["board"]["fen"] == ai_move["game"]["board"]["fen"]
+
+    ai_surrender = api_client.surrender(user3["id"])
+    assert ai_surrender["result"]["reason"] == "surrender"
 
     check_step("Create another game and finish it with checkmate")
     api_client.start_search_opponent(mate_user1["id"])

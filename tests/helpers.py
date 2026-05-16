@@ -195,6 +195,30 @@ class ApiClient:
         assert response.status_code == 200, f"Failed to move piece: {response.text}"
         return response.json()
 
+    def start_ai_game(self, user_id: str, user_color: str = "white", ai_difficulty: int = 3):
+        response = self.start_ai_game_response(user_id, user_color, ai_difficulty)
+        assert response.status_code == 200, f"Failed to start AI game: {response.text}"
+        return response.json()
+
+    def start_ai_game_response(self, user_id: str, user_color: str = "white", ai_difficulty: int = 3):
+        return httpx.post(
+            f"{self.base_url}/api/game/ai/start",
+            params=self.params(user_id=user_id, user_color=user_color, ai_difficulty=ai_difficulty),
+            timeout=10,
+        )
+
+    def move_ai(self, game_id: str):
+        response = self.move_ai_response(game_id)
+        assert response.status_code == 200, f"Failed to move AI: {response.text}"
+        return response.json()
+
+    def move_ai_response(self, game_id: str):
+        return httpx.post(
+            f"{self.base_url}/api/game/ai/move",
+            params=self.params(game_id=game_id),
+            timeout=20,
+        )
+
     def stop_search_opponent(self, user_id: str):
         response = self.stop_search_opponent_response(user_id)
         assert response.status_code == 200, f"Failed to stop opponent search: {response.text}"

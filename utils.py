@@ -8,7 +8,7 @@ from fastapi import HTTPException
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db.models import GameMove, Games, OpponentSearch, User
+from db.models import GameMove, Games, OpponentSearch, User, UserRole
 from responses import GameResult, RatingChange, User as UserResponse
 
 
@@ -37,6 +37,32 @@ def user_to_response(user: User) -> UserResponse:
         rating=user.rating,
         registryed_at=registryed_at,
     )
+
+
+async def get_or_create_ai_user(session: AsyncSession) -> User:
+    unique = os.getenv("AI_USER_UNIQUE", "chess_ai")
+    result = await session.execute(select(User).where(User.unique == unique))
+    ai_user = result.scalar_one_or_none()
+    if ai_user:
+        return ai_user
+
+    ai_user = User(
+        unique=unique,
+        first_name=os.getenv("AI_USER_FIRST_NAME", "Chess AI"),
+        middle_name=None,
+        last_name=None,
+        password=os.getenv("AI_USER_PASSWORD", "ai_opponent"),
+        phone=None,
+        email=os.getenv("AI_USER_EMAIL"),
+        tg_id=None,
+        rating=int(os.getenv("AI_USER_RATING", os.getenv("BASE_USER_RATING", 400))),
+        is_active=True,
+        role=UserRole.ADMIN,
+        registryed_at=int(datetime.utcnow().timestamp()),
+    )
+    session.add(ai_user)
+    await session.flush()
+    return ai_user
 
 
 async def get_user_or_404(session: AsyncSession, user_id: UUID | str) -> User:

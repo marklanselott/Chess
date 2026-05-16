@@ -12,3 +12,4 @@ async def init_models():
         await conn.execute(text("ALTER TABLE games ADD COLUMN IF NOT EXISTS winner_id UUID"))
         await conn.execute(text("ALTER TABLE games ADD COLUMN IF NOT EXISTS loser_id UUID"))
         await conn.execute(text("ALTER TABLE games ADD COLUMN IF NOT EXISTS finished_at INTEGER"))
+        await conn.execute(text("ALTER TABLE games ADD COLUMN IF NOT EXISTS ai_difficulty INTEGER"))

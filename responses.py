@@ -57,6 +57,7 @@ class Game(BaseModel):
     white: UUID
     black: UUID
     board: Board
+    ai_difficulty: int | None = None
 
 class SearchedOpponent(BaseModel):
     game: Game | None = None

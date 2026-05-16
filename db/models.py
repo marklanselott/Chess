@@ -69,6 +69,7 @@ class Games(Base):
     winner_id = Column(UUID, ForeignKey("users.id"), nullable=True)
     loser_id = Column(UUID, ForeignKey("users.id"), nullable=True)
     finished_at = Column(Integer, nullable=True)
+    ai_difficulty = Column(Integer, nullable=True)
 
 
 class GameMove(Base):
