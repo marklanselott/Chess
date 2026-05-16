@@ -52,6 +52,6 @@ def generate_chess_keyboard(fen: str, selected_cell: str = None) -> list:
         keyboard.append(row_buttons)
         
     # В самый низ под доску добавляем кнопку сдачи на всю ширину
-    keyboard.append([Button.inline("🏳️ Сдаться в этой партии", data="game_surrender")])
+    #keyboard.append([Button.inline("🏳️ Сдаться в этой партии", data="game_surrender")])
     
     return keyboard

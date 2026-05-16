@@ -34,409 +34,412 @@ async def offline(event: events.CallbackQuery.Event):
     await event.edit("Выберите уровень сложности", buttons=level)
 
 async def listen_opponent_moves(client, user_id, game_id):
-    """
-    Фоновый цикл: раз в 2 секунды проверяет, не изменился ли FEN на сервере.
-    Если соперник сделал ход — обновляет доску на экране.
-    """
     token = get_token()
     print(f"[Фон] Запущено отслеживание ходов соперника для игрока {user_id}")
     
     while True:
         try:
-            # 1. Проверяем, активна ли еще игра в памяти нашего бота
             state = user_state.get(user_id)
-            if not state or state.get("game_id") != game_id or not state.get("searching") is False:
-                # Если игрок сдался, игра закрылась или началась новая — тушим этот цикл
+            if not state or state.get("game_id") != game_id or state.get("searching") is True:
                 break
                 
-            # 2. Запрашиваем состояние доски с сервера
             game_data = await asyncio.to_thread(get_game_board, token, game_id)
-            if not game_data:
+            
+            # ЕСЛИ БЭК КРАШИТСЯ ИЛИ ГОВОРИТ ЧТО ИГРЫ НЕТ — ПРОВЕРЯЕМ СТАТУС КОНЦА ИГРЫ
+            if not game_data or (isinstance(game_data, dict) and game_data.get("status") == "error"):
+                # На всякий случай проверяем, может игра просто завершилась
+                if game_data and "finished" in str(game_data):
+                    user_state[user_id] = None
+                    board_msg_id = state.get("board_msg_id")
+                    if board_msg_id:
+                        try:
+                            await client.edit_message(user_id, board_msg_id, "🏁 Партия завершена! Мат или сдача.", buttons=main_menu)
+                        except Exception: pass
+                    break
                 await asyncio.sleep(2)
                 continue
                 
-            game_info = game_data.get("game", {})
-            server_fen = game_info.get("board", {}).get("fen")
+            game_info = game_data.get("game", {}) if isinstance(game_data, dict) else {}
+            server_fen = game_info.get("board", {}).get("fen") if game_info else None
+            game_status = game_info.get("status") if game_info else None
             
-            # 3. Если FEN на сервере отличается от того, что сохранен у нас
+            # Если бэк четко вернул статус окончания игры
+            if game_status in ["finished", "surrendered"]:
+                user_state[user_id] = None
+                board_msg_id = state.get("board_msg_id")
+                if board_msg_id:
+                    try:
+                        await client.edit_message(user_id, board_msg_id, "💔 Партия завершена. Вы проиграли (Шах и мат / Оппонент победил).", buttons=main_menu)
+                        break
+                    except Exception: pass
+                
+                await client.send_message(user_id, "🏁 Игра завершена! Возврат в меню.", buttons=main_menu)
+                break
+       
+            # Если соперник просто походил
             if server_fen and server_fen != state.get("current_fen"):
-                print(f"[Фон] Обнаружен ход соперника в игре {game_id}!")
-                
-                # Обновляем FEN в памяти бота
                 user_state[user_id]["current_fen"] = server_fen
-                user_state[user_id]["selected_piece"] = None # Сбрасываем выделение, если оно стояло
-                
-                # Нам нужно отправить обновленную доску. 
-                # Так как у нас в фоновом цикле нет объекта 'event', мы создаем фейковый контекст 
-                # или передаем client напрямую, чтобы отредактировать последнее сообщение.
-                # Для простоты — отправляем доску новым сообщением через client:
+                user_state[user_id]["selected_piece"] = None
                 await send_game_board(client, user_id)
                 
-            # Делаем паузу в 2 секунды перед следующей проверкой, чтобы не спамить API
             await asyncio.sleep(2)
             
         except Exception as e:
-            print(f"[Фон Ошибка]: {e}")
+            print(f"[Фон Ошибка в цикле]: {e}")
             await asyncio.sleep(2)
             
     print(f"[Фон] Отслеживание ходов соперника для {user_id} успешно остановлено.")
+
+def is_my_turn(fen: str, my_color: str) -> bool:
+    """ Helper to determine if it's user's turn based on FEN """
+    try:
+        parts = fen.split()
+        if len(parts) > 1:
+            active_color = parts[1] # 'w' or 'b'
+            return (active_color == 'w' and my_color == 'white') or (active_color == 'b' and my_color == 'black')
+    except Exception:
+        pass
+    return True
 
 async def search_opponent(event: events.CallbackQuery.Event):
     user_id = event.sender_id
     token = get_token()
     
-    # 1. Получаем профиль, чтобы узнать свой UUID ($uuid)
     me = get_user(token, user_id)
-    if not me.get("searched"):
+    # Защита: проверяем, что ответ от сервера вообще пришел и это словарь
+    if not me or not isinstance(me, dict) or not me.get("searched"):
         await event.answer("❌ Ошибка профиля", alert=True)
         return
 
     user_uuid = me["searched"][0].get("id")
 
-    if user_state.get(user_id, {}).get("searching"):
+    # ИСПРАВЛЕНИЕ: Безопасно получаем стейт игрока
+    state = user_state.get(user_id)
+    # Если стейт является словарем и там уже активен поиск — выходим, чтобы не спамить запросами
+    if isinstance(state, dict) and state.get("searching"):
         return
 
+    # Записываем чистый словарь для старта поиска
     user_state[user_id] = {"searching": True}
 
-    # Сбрасываем старую сессию поиска
     await asyncio.to_thread(stop_search_opponent, token, user_uuid)
     await asyncio.sleep(0.5) 
 
-    # Стартуем поиск
     res_start = await asyncio.to_thread(start_search_opponent, token, user_uuid)
-    
     if res_start.status_code != 200:
         user_state[user_id]["searching"] = False
-        if res_start.status_code == 400:
-            btn_fix = [[Button.inline("⚙️ Глубокий сброс сессии", data="force_api_stop")]]
-            await event.edit(
-                "⚠️ **Сервер все еще не отпустил сессию.**\n"
-                "Нажмите 'Глубокий сброс' и подождите пару секунд перед новым поиском.", 
-                buttons=btn_fix
-            )
-        else:
-            await event.edit(f"❌ Ошибка старта поиска: {res_start.status_code}\n{res_start.text}")
+        await event.edit("❌ Ошибка при старте поиска.", buttons=play_menu)
         return
 
-    await event.edit("🔎 **Поиск оппонента...**", buttons=cancel_search_btn)
+    await event.edit("🔍 Ищем противника...", buttons=[cancel_search_btn])
 
-    try:
-        while user_state.get(user_id, {}).get("searching") is True:
-            print(f"[Поиск] Игрок {user_id} отправляет запрос в await_opponent...")
-            
-            try:
-                # Опрашиваем бэк Марка внутри потока
-                data = await asyncio.to_thread(await_opponent, token, user_uuid)
-            except Exception as e:
-                print(f"[Поиск] Запрос await_opponent вылетел по ошибке: {e}")
-                data = None
-            
-            if not user_state.get(user_id, {}).get("searching"): 
-                break
-
-            print(f"[Поиск] Игрок {user_id} получил из await_opponent данные: {data}")
-
-            # --- 🛡️ ЖЕЛЕЗОБЕТОННАЯ СТРАХОВКА ДЛЯ ПЕРВОГО ИГРОКА ---
-            # Если бэк разорвал коннект (вернул None, ошибку или пустую строку),
-            # мы принудительно проверяем базу данных Марка через get_game_board
-            if data is None or data == "None":
-                print(f"⚠️ [Защита] У игрока {user_id} пустой ответ. Проверяем get_game_board принудительно...")
-                board_data = await asyncio.to_thread(get_game_board, token, user_uuid)
-                print(f"[Защита] Ответ от get_game_board для {user_id}: {board_data}")
-                
-                if board_data and board_data.get("game"):
-                    print(f"🎯 [Защита] КРАСАВЧИК! Игра реально найдена в БД для первого игрока ({user_id})!")
-                    game_info = board_data["game"]
-                    
-                    # Вычисляем UUID соперника
-                    opp_uuid = game_info.get("black") if game_info.get("white") == user_uuid else game_info.get("white")
-                    
-                    # Подменяем data так, чтобы сработал стандартный блок успеха ниже
-                    data = {
-                        "game": game_info,
-                        "opponent": {"id": opp_uuid, "unique": "Оппонент", "rating": 400}
-                    }
-                else:
-                    print(f"[Защита] Активной игры в БД для {user_id} пока нет. Продолжаем поиск.")
-                    await asyncio.sleep(1)
-                    continue
-            # ----------------------------------------------------
-
-            # Обработка обычного таймаута пула (404)
-            if data == "404":
-                await asyncio.sleep(0.2)
-                continue
-
-            # ОБРАБОТКА УСПЕХА (Сюда зайдут ОБА игрока — и второй напрямую, и первый через страховку)
-            if isinstance(data, dict) and data.get("opponent"):
-                user_state[user_id]["searching"] = False
-                opponent = data["opponent"]
-                
-                print(f"🎉 ПАРА НАШЛАСЬ в коде для {user_id}! Инициализируем матч...")
-                
-                real_game_id = None
-                fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
-                my_color = "white"
-                
-                if data.get("game"):
-                    game_info = data["game"]
-                    real_game_id = game_info.get("id")
-                    fen = game_info.get("board", {}).get("fen", fen)
-                    is_white = game_info.get("white") == user_uuid
-                    my_color = "white" if is_white else "black"
-                else:
-                    board_data = await asyncio.to_thread(get_game_board, token, user_uuid)
-                    if board_data and board_data.get("game"):
-                        game_info = board_data["game"]
-                        real_game_id = game_info.get("id")
-                        fen = game_info.get("board", {}).get("fen", fen)
-                        is_white = game_info.get("white") == user_uuid
-                        my_color = "white" if is_white else "black"
-
-                if not real_game_id:
-                    print(f"❌ КРИТИКА: Игрок {user_id} не смог вытащить game_id матча.")
-                    await event.edit("⚠️ Ошибка синхронизации ID матча.", buttons=play_menu)
-                    return
-
-                print(f"✅ Игрок {user_id} зафиксировал game_id: {real_game_id}. Включаем доску!")
-
-                # Записываем всё в стейт юзера
-                user_state[user_id] = {
-                    "searching": False,
-                    "game_id": real_game_id, 
-                    "my_color": my_color,
-                    "opponent_name": opponent.get("unique") or opponent.get("first_name") or "Оппонент",
-                    "opponent_rating": opponent.get("rating", 0),
-                    "current_fen": fen,
-                    "selected_piece": None
-                }
-                
-                color_emoji = "⚪ Белыми фигурами" if my_color == "white" else "⚫ Черными фигурами"
-                match_msg = (
-                    f"✅ **Игра найдена!**\n\n"
-                    f"👤 **Противник:** {user_state[user_id]['opponent_name']} (⭐ {user_state[user_id]['opponent_rating']})\n"
-                    f"🏳️ **Вы играете:** {color_emoji}\n"
-                )
-                await event.edit(match_msg)
-                
-                # Рисуем доску (теперь она железно откроется у обоих!)
-                await send_game_board(event, user_id)
-                
-                # Запускаем прослушку ходов соперника
-                asyncio.create_task(listen_opponent_moves(event.client, user_id, real_game_id))
-                return 
-                
-            await asyncio.sleep(0.5)
-            
-    except Exception as e:
-        print(f"❌ ОШИБКА В ПОИСКЕ: {e}")
-        await event.edit(f"⚠️ Ошибка создания матча: {e}")
+    # Запускаем long-polling ожидания
+    data = await asyncio.to_thread(await_opponent, token, user_uuid)
+    
+    if isinstance(data, dict) and data.get("opponent"):
+        user_state[user_id]["searching"] = False
+        opponent = data["opponent"]
         
-    finally:
-        if user_id in user_state and user_state[user_id].get("searching"):
+        real_game_id = None
+        fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+        my_color = "white"
+        
+        if data.get("game"):
+            game_info = data["game"]
+            real_game_id = game_info.get("id")
+            fen = game_info.get("board", {}).get("fen", fen)
+            is_white = game_info.get("white") == user_uuid
+            my_color = "white" if is_white else "black"
+            
+        if not real_game_id:
+            # Возвращаем флаг поиска в False, если сорвалось на этапе создания игры
             user_state[user_id]["searching"] = False
+            await event.edit("⚠️ Ошибка синхронизации ID матча.", buttons=play_menu)
+            return
+
+        # Пытаемся определить Telegram ID оппонента из данных бэка, если он там есть
+        opponent_tg_id = opponent.get("tg_id")
+
+        user_state[user_id] = {
+            "searching": False,
+            "game_id": real_game_id,
+            "my_color": my_color,
+            "opponent_name": opponent.get("unique") or opponent.get("first_name") or "Оппонент",
+            "opponent_rating": opponent.get("rating", 0),
+            "opponent_tg_id": opponent_tg_id,
+            "current_fen": fen,
+            "selected_piece": None,
+            "board_msg_id": event.message_id # Сохраняем ID сообщения доски!
+        }
+        
+        # Первичная отрисовка доски поверх текста поиска
+        await send_game_board(event, user_id)
+        
+        # Запускаем фоновый трекер ходов соперника
+        asyncio.create_task(listen_opponent_moves(event.client, user_id, real_game_id))
 
 async def callback_force_api_stop(event):
     user_id = event.sender_id
     token = get_token()
     
-    # 1. Принудительно сбрасываем флаги в памяти бота, чтобы оживить меню
+    # 1. Принудительно и БЕЗОПАСНО сбрасываем флаги в памяти бота
+    # Если стейт есть, зачищаем его полностью, чтобы остановить фоновые циклы и оживить меню
     if user_id in user_state:
-        user_state[user_id]["searching"] = False
-        user_state[user_id]["selected_piece"] = None
+        user_state[user_id] = {
+            "searching": False,
+            "game_id": None,
+            "selected_piece": None,
+            "board_msg_id": None
+        }
+    else:
+        user_state[user_id] = {"searching": False}
 
     # 2. Получаем UUID игрока
     me = get_user(token, user_id)
-    if not me.get("searched"):
+    if not me or not me.get("searched"):
         await event.answer("❌ Ошибка профиля. Не удалось получить UUID.", alert=True)
+        # Даже если профиль на сервере не нашелся, мы уже разбажили стейт в памяти бота (шаг 1),
+        # поэтому всё равно возвращаем его в меню игры:
+        await event.edit("⚙️ Локальный стейт сброшен, но сервер не ответил.", buttons=play_menu)
         return
         
     user_uuid = me["searched"][0].get("id")
     
-    # 3. Пинаем сервер через твою готовую функцию, обернутую в поток
-    await asyncio.to_thread(stop_search_opponent, token, user_uuid)
+    # 3. Пинаем сервер через готовую функцию (снимаем с поиска / закрываем сессию на бэке)
+    try:
+        await asyncio.to_thread(stop_search_opponent, token, user_uuid)
+    except Exception as e:
+        print(f"[Force Stop API Error]: {e}")
         
     # 4. Обновляем интерфейс юзеру
-    await event.answer("⚙️ Сессия сброшена!", alert=True)
+    await event.answer("⚙️ Сессия принудительно сброшена!", alert=True)
     await event.edit("❌ Старая сессия закрыта. Теперь можно искать снова.", buttons=play_menu)
 
 async def cancel_search(event: events.CallbackQuery.Event):
     user_id = event.sender_id
     token = get_token()
-
-    # Сначала меняем состояние и UI, чтобы бот не "тупил"
-    if user_id in user_state:
-        user_state[user_id]["searching"] = False
-
-    await event.answer("Поиск отменен")
-    await event.edit("❌ Поиск отменен.", buttons=play_menu)
-
-    # Уведомляем сервер об отмене в фоне
+    user_state[user_id] = {"searching": False}
     me = get_user(token, user_id)
     if me.get("searched"):
         user_uuid = me["searched"][0].get("id")
         await asyncio.to_thread(stop_search_opponent, token, user_uuid)
+    await event.edit("Поиск отменен.", buttons=play_menu)
 
-async def send_game_board(event, user_id):
+async def send_game_board(event_or_client, user_id):
+    """
+    Отрисовывает шахматную доску.
+    Показывает информацию об оппоненте, цвет игрока и ЧЕЙ СЕЙЧАС ХОД.
+    """
     state = user_state.get(user_id)
     if not state:
         return
         
     fen = state["current_fen"]
-    selected = state["selected_piece"] 
+    selected = state["selected_piece"]
     opponent_name = state["opponent_name"]
     opponent_rating = state["opponent_rating"]
-    my_color = "Белые ⚪" if state["my_color"] == "white" else "Черные ⚫"
     
-    # Генерируем сетку кнопок 8х8 + кнопку сдачи внизу
+    # Красиво форматируем цвет самого игрока
+    my_color_text = "Белые ⚪" if state["my_color"] == "white" else "Черные ⚫"
+    
+    # ВЫЧИСЛЯЕМ ЧЕЙ СЕЙЧАС ХОД ИЗ FEN
+    current_turn_text = "Определяется..."
+    try:
+        parts = fen.split()
+        if len(parts) > 1:
+            active_color = parts[1]  # 'w' или 'b'
+            if active_color == 'w':
+                current_turn_text = "Белых ⚪"
+            elif active_color == 'b':
+                current_turn_text = "Черных ⚫"
+    except Exception:
+        pass
+
+    # Генерируем кнопки шахматных клеток
     chess_buttons = generate_chess_keyboard(fen, selected_cell=selected)
     
-    # Текст сообщения
+    # Добавляем кнопку "Сдаться" под доску
+    chess_buttons.append([Button.inline("🏳️ Сдаться", data="game_surrender")])
+
+    # Формируем итоговое сообщение для игрока (Добавили строку "Сейчас ход")
     message_content = (
         f"⚔️ **Партия против:** @{opponent_name} (⭐ {opponent_rating})\n"
-        f"🏳️ **Ваш цвет:** {my_color}\n"
+        f"🏳️ **Ваш цвет:** {my_color_text}\n"
+        f"⏳ **Сейчас ход:** {current_turn_text}\n\n"
         f"ℹ️ *Нажимайте на кнопки-клетки, чтобы сделать ход.*"
     )
     
-    # 1. Проверяем, если это CallbackQuery (нажатие инлайн-кнопки) — редактируем старое сообщение
-    if hasattr(event, 'edit'):
+    # Если передано событие (клик) — редактируем сообщение на месте
+    if hasattr(event_or_client, 'edit'):
         try:
-            await event.edit(message_content, buttons=chess_buttons)
+            await event_or_client.edit(message_content, buttons=chess_buttons)
+            state["board_msg_id"] = event_or_client.message_id
             return
         except Exception:
-            pass  # Если отредактировать не получилось, код пойдет дальше и отправит новое
+            pass
 
-    # 2. Проверяем, если это вызов из фона (передан client) — отправляем новое сообщение напрямую юзеру
-    if hasattr(event, 'send_message'):
-        await event.send_message(user_id, message_content, buttons=chess_buttons)
-    else:
-        # 3. Запасной вариант для обычных текстовых эвентов (NewMessage)
-        await event.respond(message_content, buttons=chess_buttons)
+    # Если вызов из фона (listen_opponent_moves) — редактируем по сохраненному board_msg_id
+    board_msg_id = state.get("board_msg_id")
+    if board_msg_id:
+        try:
+            client = event_or_client.client if hasattr(event_or_client, 'client') else event_or_client
+            await client.edit_message(user_id, board_msg_id, message_content, buttons=chess_buttons)
+            return
+        except Exception as e:
+            print(f"[Ошибка редактирования доски из фона]: {e}")
+
+    # Самый крайний случай (если сообщения еще нет в истории) — отправляем новое
+    client = event_or_client.client if hasattr(event_or_client, 'client') else event_or_client
+    msg = await client.send_message(user_id, message_content, buttons=chess_buttons)
+    user_state[user_id]["board_msg_id"] = msg.id
 
 async def handle_cell_click(event: events.CallbackQuery.Event):
+    """
+    Обработчик кликов по кнопкам шахматной доски.
+    """
     user_id = event.sender_id
     state = user_state.get(user_id)
     
-    # 1. Проверяем, идет ли игра
-    if not state or not state.get("game_id"):
-        await event.answer("⚠️ Вы не в игре.", alert=True)
-        return
-        
-    game_id = state["game_id"]
-    # Вытаскиваем имя клетки из data кнопки (например, из "cell_e2" получаем "e2")
-    clicked_cell = event.data.decode('utf-8').split('_')[1]
-    
-    selected_before = state.get("selected_piece")
-    token = get_token()
-
-    # Сценарий А: Игрок нажимает на клетку первый раз (выбирает фигуру)
-    if not selected_before:
-        # Записываем выбранную клетку в память
-        user_state[user_id]["selected_piece"] = clicked_cell
-        await event.answer(f"Выбрано поле {clicked_cell.upper()}")
-        
-        # Перерисовываем доску, чтобы фигура взялась в фигурные скобки { }
-        await send_game_board(event, user_id)
-        return
-
-    # Сценарий Б: Игрок нажал на ту же самую фигуру второй раз — сбрасываем выделение
-    if selected_before == clicked_cell:
-        user_state[user_id]["selected_piece"] = None
-        await event.answer("Выделение снято")
-        await send_game_board(event, user_id)
-        return
-
-    # Сценарий В: У игрока уже выбрана фигура, и он жмет на ДРУГУЮ клетку (делает ход)
-    # Формируем строку хода, например "e2" + "e4" = "e2e4"
-    full_move = f"{selected_before}{clicked_cell}"
-    
-    await event.answer("⚡ Обработка хода сервером...")
-    
-    # Отправляем ход в API админа (это GET запрос согласно тестам)
-    result = await asyncio.to_thread(make_chess_move, token, game_id, full_move)
-    
-    if not result:
-        await event.answer("❌ Ошибка отправки хода. Возможно, сейчас не ваш ход.", alert=True)
-        user_state[user_id]["selected_piece"] = None
-        await send_game_board(event, user_id)
-        return
-        
-    # Если бэк вернул ошибку валидации FastAPI (FastAPI Validation Error) или кастомную ошибку
-    if "detail" in result or result.get("status") == "error":
-        msg = result.get("detail", "Нелегальный ход по правилам шахмат!")
-        # Если detail прилетел списком (ошибка валидации), достаем красивый текст
-        if isinstance(msg, list) and len(msg) > 0:
-            msg = msg[0].get("msg", "Ошибка валидации параметров")
-            
-        await event.answer(f"⚠️ {msg}", alert=True)
-        user_state[user_id]["selected_piece"] = None
-        await send_game_board(event, user_id)
-        return
-
-    # --- ИСПРАВЛЕННЫЙ ПАРСИНГ СТРОГО ПО ТЕСТАМ АДМИНА ---
-    # В ответе move_piece объект board лежит в корне: result["board"]["fen"]
-    board_info = result.get("board", {})
-    new_fen = board_info.get("fen")
-    
-    if new_fen:
-        # Обновляем состояние игры новой расстановкой
-        user_state[user_id]["current_fen"] = new_fen
-        user_state[user_id]["selected_piece"] = None # Сбрасываем выделение
-        
-        # Обновляем кнопочную доску на экране у себя
-        await send_game_board(event, user_id)
-    else:
-        # Запасной вариант на случай, если структура вернулась старая
-        game_info = result.get("game", {})
-        fallback_fen = game_info.get("board", {}).get("fen")
-        
-        if fallback_fen:
-            user_state[user_id]["current_fen"] = fallback_fen
-            user_state[user_id]["selected_piece"] = None
-            await send_game_board(event, user_id)
-        else:
-            await event.answer("⚠️ Ход сделан, но сервер не вернул FEN доски.", alert=True)
-
-async def handle_surrender_click(event: events.CallbackQuery.Event):
-    user_id = event.sender_id
-    state = user_state.get(user_id)
-    
-    # Проверяем, идет ли вообще игра у этого пользователя
     if not state or not state.get("game_id"):
         await event.answer("⚠️ Вы не находитесь в активной игре.", alert=True)
         return
         
+    fen = state["current_fen"]
+    my_color = state["my_color"]
+    game_id = state["game_id"]
+    
+    if not is_my_turn(fen, my_color):
+        await event.answer("⏳ Сейчас ход вашего оппонента! Ожидайте.", alert=True)
+        return
+        
+    cell = event.data.decode('utf-8').split('_')[1]
+    selected = state["selected_piece"]
+    
+    if not selected:
+        user_state[user_id]["selected_piece"] = cell
+        await send_game_board(event, user_id)
+        await event.answer(f"Выбрана клетка {cell}")
+    else:
+        if selected == cell:
+            user_state[user_id]["selected_piece"] = None
+            await send_game_board(event, user_id)
+            return
+            
+        move_str = f"{selected}{cell}"
+        token = get_token()
+        
+        result = await asyncio.to_thread(make_chess_move, token, game_id, move_str)
+        
+        # --- ПЕРЕХВАТЫВАЕМ КОНЕЦ ИГРЫ И ОШИБКИ ---
+        if isinstance(result, dict) and ("detail" in result or result.get("status") == "error"):
+            msg = result.get("detail", "")
+            
+            # Если игра УЖЕ завершена (кто-то поставил мат ранее)
+            if "Game already finished" in str(msg) or "Game already finished" in str(result):
+                # Перепроверяем финальный статус игры на бэкенде, чтобы узнать КТО победил
+                token = get_token()
+                game_data = await asyncio.to_thread(get_game_board, token, game_id)
+                
+                user_state[user_id] = None # Локально закрываем игру в любом случае
+                
+                if game_data and isinstance(game_data, dict):
+                    game_info = game_data.get("game", {})
+                    # Пытаемся понять по FEN или победителю, но самый простой вариант:
+                    # Раз игра уже была завершена до твоего клика — значит, мат поставили ТЕБЕ!
+                    await event.edit("💔 Партия завершена. Вам поставили ШАХ и МАТ. Оппонент победил!", buttons=main_menu)
+                else:
+                    await event.edit("🏁 Партия завершена!", buttons=main_menu)
+                return
+                
+            # Обычный нелегальный ход
+            if isinstance(msg, list) and len(msg) > 0:
+                msg = msg[0].get("msg", "Ошибка валидации параметров")
+            elif not msg:
+                msg = "Нелегальный ход по правилам шахмат!"
+                
+            await event.answer(f"⚠️ {msg}", alert=True)
+            user_state[user_id]["selected_piece"] = None
+            await send_game_board(event, user_id)
+            return
+            
+        if not result:
+            await event.answer("⚠️ Ошибка связи с сервером при отправке хода.", alert=True)
+            user_state[user_id]["selected_piece"] = None
+            await send_game_board(event, user_id)
+            return
+            
+        # Если ход успешный
+        game_info = result.get("game", {}) if "game" in result else result
+        board_info = game_info.get("board", {}) if "board" in game_info else result.get("board", {})
+        
+        new_fen = board_info.get("fen")
+        game_status = game_info.get("status")
+        
+        # Если ИМЕННО ЭТОТ твой ход привел к мату (бэк вернул 200 и статус finished)
+        if game_status in ["finished", "surrendered"]:
+            user_state[user_id] = None
+            await event.edit("🎉 Поздравляем! Вы поставили ШАХ и МАТ! Победа! 🏆", buttons=main_menu)
+            return
+            
+        if new_fen:
+            user_state[user_id]["current_fen"] = new_fen
+            user_state[user_id]["selected_piece"] = None
+            await send_game_board(event, user_id)
+
+async def handle_surrender_click(event: events.CallbackQuery.Event):
+    """
+    Обработчик кнопки сдаться. Получает UUID игрока, передает его в API,
+    после чего выбрасывает в главное меню обоих оппонентов.
+    """
+    user_id = event.sender_id
+    state = user_state.get(user_id)
+    
+    if not state or not state.get("game_id"):
+        await event.answer("⚠️ Активная игра не найдена.", alert=True)
+        return
+        
     token = get_token()
     
-    # Чтобы вызвать surrender_game, нам нужен UUID пользователя на бэкенде.
-    # Достанем его через get_user, как ты делал в поиске оппонента.
+    # 1. Получаем профиль юзера, чтобы вытащить его UUID (бэк требует UUID игрока для сдачи)
     me = get_user(token, user_id)
-    if not me.get("searched"):
-        await event.answer("❌ Ошибка профиля на API", alert=True)
+    if not me or not isinstance(me, dict) or not me.get("searched"):
+        await event.answer("❌ Ошибка профиля. Не удалось получить UUID для отправки на сервер.", alert=True)
         return
         
     user_uuid = me["searched"][0].get("id")
     
-    # Показываем всплывающее уведомление, что запрос обрабатывается
-    await event.answer("Отправка запроса на сервер...")
+    # 2. Шлем запрос на бэкенд и передаем именно USER_UUID, чтобы закрыть сессию в БД
+    await asyncio.to_thread(surrender_game, token, user_uuid)
     
-    # Вызываем асинхронно эндпоинт POST /api/game/surrender
-    res = await asyncio.to_thread(surrender_game, token, user_uuid)
+    opponent_tg_id = state.get("opponent_tg_id")
+    game_id = state.get("game_id")
     
-    # Очищаем состояние игры в оперативной памяти бота, возвращая его в обычный режим
-    user_state[user_id] = {
-        "searching": False,
-        "game_id": None,
-        "my_color": None,
-        "current_fen": None,
-        "selected_piece": None
-    }
+    # 3. Выбрасываем текущего (кто нажал кнопку) игрока в главное меню
+    user_state[user_id] = None
+    await event.edit("🏳️ Вы сдались! Игра завершена.", buttons=main_menu)
     
-    # Изменяем сообщение с доской, сообщая, что игра завершена сдачей
-    from menus import main_menu # Импортируем твое главное меню для возврата
-    
-    await event.edit(
-        "🏳️ **Вы сдались.** Партия завершена досрочно.\n\n"
-        "Вы вернулись в главное меню. Можете начать новый поиск!",
-        buttons=main_menu
-    )
+    # 4. Автоматически переводим противника в главное меню, если у нас сохранен его TG ID
+    if opponent_tg_id:
+        opp_state = user_state.get(opponent_tg_id)
+        # Проверяем, что противник все еще находится в этой же игре
+        if opp_state and opp_state.get("game_id") == game_id:
+            user_state[opponent_tg_id] = None # Чистим стейт противника, чтобы заглушить его фоновый цикл
+            
+            try:
+                opp_msg_id = opp_state.get("board_msg_id")
+                if opp_msg_id:
+                    # Редактируем сообщение доски соперника, сообщая о победе
+                    await event.client.edit_message(
+                        opponent_tg_id, opp_msg_id, 
+                        "🎉 Противник сдался! Вы победили! Партия завершена.", 
+                        buttons=main_menu
+                    )
+                else:
+                    # Если ID сообщения доски соперника не найден, просто шлем ему новое сообщение
+                    await event.client.send_message(
+                        opponent_tg_id, 
+                        "🎉 Противник сдался! Вы победили! Партия завершена.", 
+                        buttons=main_menu
+                    )
+            except Exception as e:
+                print(f"[Ошибка уведомления оппонента о сдаче]: {e}")

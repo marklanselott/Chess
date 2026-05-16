@@ -148,10 +148,15 @@ def make_chess_move(token: str, game_id: str, from_to: str):
             return response.json()
         else:
             print(f"Ошибка GET /api/game/move [{response.status_code}]: {response.text}")
-            return None
+            try:
+                # Пытаемся вернуть JSON ошибки (например, {"detail": "Game already finished"})
+                return response.json()
+            except Exception:
+                # Если бэк вернул не JSON, оборачиваем текст в словарь
+                return {"status": "error", "detail": response.text}
     except Exception as e:
         print(f"Ошибка сети в make_chess_move: {e}")
-        return None
+        return {"status": "error", "detail": str(e)}
 
 
 def surrender_game(token: str, user_id: str):
