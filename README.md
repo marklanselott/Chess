@@ -143,7 +143,8 @@ Since analyzing a 40-move game at depth 5 can take a long time, this feature use
         "FEN_1...",
         "FEN_2...",
         "FEN_3..."
-      ]
+      ],
+      "depth": 4
     }
 
 **Response (202 Accepted):**

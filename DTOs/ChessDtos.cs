@@ -37,6 +37,7 @@ public class BotMoveResponse
 public class AnalyzeRequest
 {
     public List<string> HistoryFens { get; set; } = new List<string>();
+    public int Depth { get; set; } = 4;
 }
 
 public class MoveAnalysis

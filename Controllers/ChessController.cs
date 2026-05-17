@@ -148,12 +148,14 @@ public class ChessController : ControllerBase
 
     private static readonly ConcurrentDictionary<string, AnalysisJobResponse> _analysisJobs = new();
 
-    [HttpPost("analyze/start")]
+   [HttpPost("analyze/start")]
     public IActionResult StartAnalysis([FromBody] AnalyzeRequest request)
     {
         string jobId = Guid.NewGuid().ToString();
         _analysisJobs[jobId] = new AnalysisJobResponse { JobId = jobId, Status = "Processing" };
-        Task.Run(() => RunHeavyAnalysis(jobId, request.HistoryFens));
+        
+        Task.Run(() => RunHeavyAnalysis(jobId, request.HistoryFens, request.Depth));
+        
         return Accepted(new { JobId = jobId, Message = "Start analizing" });
     }
 
@@ -171,7 +173,7 @@ public class ChessController : ControllerBase
         return NotFound(new { Message = "Task not found" });
     }
 
-    private void RunHeavyAnalysis(string jobId, List<string> historyFens)
+    private void RunHeavyAnalysis(string jobId, List<string> historyFens, int depth)
     {
         try
         {
@@ -185,12 +187,13 @@ public class ChessController : ControllerBase
                 board.LoadFromFen(currentFen);
                 
                 string[] fenParts = currentFen.Split(' ');
-                PieceColor currentTurn = fenParts[1] == "w" ? PieceColor.White : PieceColor.Black;
+                PieceColor currentTurn = fenParts[1] == "w" ?
+                PieceColor.White : PieceColor.Black;
 
                 GameManager game = new GameManager(board, currentTurn);
 
-                Bot aiBot = new Bot(currentTurn, 5); 
-                var bestMove = aiBot.FindBestMove(game); 
+                Bot aiBot = new Bot(currentTurn, depth); 
+                var bestMove = aiBot.FindBestMove(game);
                 
                 int currentScore = Evaluator.Evaluate(game.Board);
                 string annotation = "Normal";
