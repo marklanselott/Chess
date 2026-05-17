@@ -5,7 +5,6 @@ from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from responses import Game as GameResponse
-from responses import User as UserResponse
 from sqlalchemy.future import select
 from sqlalchemy import func, and_
 from db.database import get_db
@@ -38,6 +37,32 @@ async def random_uuid_in_rating_range(session: AsyncSession, user_id: UUID, rati
         .limit(1)
     )
     return opponent.scalar_one_or_none()
+
+async def locked_search_for_user(session: AsyncSession, user_id: UUID):
+    result = await session.execute(
+        select(OpponentSearch)
+        .where(OpponentSearch.user_id == user_id)
+        .with_for_update()
+    )
+    return result.scalar_one_or_none()
+
+async def locked_opponent_in_rating_range(session: AsyncSession, user_id: UUID, rating: int):
+    rating_range = int(os.getenv("RATING_SEARCH_RANGE", 100))
+    min_rating, max_rating = rating - rating_range, rating + rating_range
+    result = await session.execute(
+        select(OpponentSearch)
+        .where(
+            and_(
+                OpponentSearch.user_id != user_id,
+                OpponentSearch.rating.between(min_rating, max_rating),
+                OpponentSearch.status == GameSessionStatus.Searching
+            )
+        )
+        .order_by(func.random())
+        .with_for_update(skip_locked=True)
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
 
 async def get_game_opponent(session: AsyncSession, user_id: UUID, game_id: UUID):
     opponent = await session.execute(
@@ -78,6 +103,88 @@ async def build_found_game_response(session: AsyncSession, user, user_opponent: 
         )
     )
 
+async def try_build_match(session: AsyncSession, user_id: UUID):
+    user = await get_user_or_404(session, user_id)
+    user_opponent = await locked_search_for_user(session, user.id)
+
+    if not user_opponent:
+        await session.rollback()
+        raise HTTPException(status_code=404, detail="Opponent search not found")
+
+    if user_opponent.status == GameSessionStatus.InGame:
+        if not user_opponent.game_id:
+            await session.rollback()
+            raise HTTPException(status_code=400, detail="Game session is missing game_id")
+
+        found_game = await build_found_game_response(session, user, user_opponent)
+        await session.rollback()
+        return found_game
+
+    opponent_search = await locked_opponent_in_rating_range(session, user.id, user.rating)
+    if not opponent_search:
+        await session.rollback()
+        return None
+
+    try:
+        opponent = await get_user_or_404(session, opponent_search.user_id)
+    except HTTPException:
+        await session.delete(opponent_search)
+        await session.commit()
+        logger.warning("Removed stale opponent search: user_id=%s", opponent_search.user_id)
+        return None
+
+    game_id = uuid4()
+    opponent_search.status = GameSessionStatus.InGame
+    opponent_search.game_id = game_id
+    user_opponent.status = GameSessionStatus.InGame
+    user_opponent.game_id = game_id
+
+    colors = ["white", "black"]
+    rand_color = random.choice(colors)
+    board = Game.board()
+    user_response = user_to_response(user)
+    opponent_response = user_to_response(opponent)
+    if rand_color == colors[0]: 
+        white = user_response
+        black = opponent_response
+    else: 
+        black = user_response
+        white = opponent_response
+
+    game = GameResponse(
+        id=game_id,
+        white=white.id,
+        black=black.id,
+        board=board
+    )
+
+    session.add(Games(
+        id=game_id,
+        white_id=white.id,
+        black_id=black.id
+    ))
+    await session.flush()
+
+    session.add(GameMove(
+        game_id=game_id,
+        fen=game.board.fen,
+        step=0
+    ))
+    await session.commit()
+
+    logger.info(
+        "Opponent found: game_id=%s user_id=%s opponent_id=%s",
+        game_id,
+        user.id,
+        opponent.id,
+    )
+
+    return SearchedOpponentResponse(
+        user=user_response,
+        opponent=opponent_response,
+        game=game
+    )
+
 @router.post("/search/start", responses={
     200: {"description": "Successfully started searching for opponent"},
     404: {"description": "User not found"}
@@ -110,6 +217,7 @@ async def start_search_opponent(user_id: UUID, session: AsyncSession = Depends(g
 }, response_model=SearchedOpponentResponse)
 async def await_opponent(user_id: str, session: AsyncSession = Depends(get_db)):
     user = await get_user_or_404(session, user_id)
+    current_user_id = user.id
     user_opponent = await get_opponent_search(session, user_id)
 
     if not user_opponent:
@@ -117,85 +225,14 @@ async def await_opponent(user_id: str, session: AsyncSession = Depends(get_db)):
     
     if user_opponent.status == GameSessionStatus.InGame and not user_opponent.game_id:
         raise HTTPException(status_code=400, detail="Game session is missing game_id")
+    await session.rollback()
 
     async def find_opponent():
         while True:
-            user_opponent = await get_opponent_search(session, user_id)
-            if not user_opponent:
+            found_game = await try_build_match(session, current_user_id)
+            if found_game:
+                yield found_game.model_dump_json() + "\n"
                 return
-            
-            if user_opponent.status == GameSessionStatus.InGame and user_opponent.game_id:
-                found_game = await build_found_game_response(session, user, user_opponent)
-                if found_game:
-                    yield found_game.model_dump_json() + "\n"
-                    return
-
-            result = SearchedOpponentResponse(
-                user=user_to_response(user),
-                opponent=None,
-                game=None
-            )
-
-            opponent = await random_uuid_in_rating_range(session, user_id, user.rating)
-            
-            if opponent:
-                if user_opponent.status == GameSessionStatus.Searching:
-                    game_id = uuid4()
-                    opponent.status = GameSessionStatus.InGame
-                    opponent.game_id = game_id
-
-                    user_opponent.status = GameSessionStatus.InGame
-                    user_opponent.game_id = game_id
-                    await session.commit()
-
-                    try:
-                        opponent = await get_user_or_404(session, opponent.user_id)
-                    except HTTPException:
-                        await session.delete(opponent)
-                        await session.commit()
-                        logger.warning("Removed stale opponent search: user_id=%s", user_id)
-                        continue
-                    opponent = user_to_response(opponent)
-
-                    colors = ["white", "black"]
-                    rand_color = random.choice(colors)
-                    board = Game.board()
-                    if rand_color == colors[0]: 
-                        white = user_to_response(user)
-                        black = user_to_response(opponent)
-                    else: 
-                        black = user_to_response(user)
-                        white = user_to_response(opponent)
-
-                    game = GameResponse(
-                        id=game_id,
-                        white=white.id,
-                        black=black.id,
-                        board=board
-                    )
-
-                    session.add(Games(
-                        id=game_id,
-                        white_id=white.id,
-                        black_id=black.id
-                    ))
-                    await session.flush()
-
-                    new_game = GameMove(
-                        game_id=game_id,
-                        fen=game.board.fen,
-                        step=0
-                    )
-                    session.add(new_game)
-                    await session.commit()
-                    result.opponent = opponent
-                    result.game = game
-                    logger.info("Opponent found: game_id=%s user_id=%s opponent_id=%s", game_id, user_id, opponent.id)
-
-                    yield result.model_dump_json() + "\n"
-                    return
-                else:
-                    raise HTTPException(status_code=400, detail=f"Outside of the search status, you cannot expect to find an opponent.")
             
             await asyncio.sleep(3)
 

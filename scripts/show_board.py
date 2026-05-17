@@ -10,15 +10,48 @@ import httpx
 from dotenv import load_dotenv
 
 
-ROOT = Path(__file__).resolve().parents[1]
+def runtime_root() -> Path:
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parents[1]
+
+
+ROOT = runtime_root()
+
+
+def load_environment() -> None:
+    env_paths = [Path.cwd() / ".env", ROOT / ".env", ROOT.parent / ".env"]
+    seen = set()
+
+    for path in env_paths:
+        resolved = path.resolve()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        load_dotenv(resolved, override=False)
 
 
 def api_base_url() -> str:
-    return os.getenv("MAIN_API_BASE", f"http://127.0.0.1:{os.getenv('MAIN_API_PORT', '9538')}")
+    return os.getenv("MAIN_API_BASE", f"http://5.161.254.136:9538")
 
 
 def api_timeout() -> float:
     return float(os.getenv("MAIN_API_TIMEOUT", "130"))
+
+
+def client_kwargs() -> dict:
+    return {
+        "timeout": api_timeout(),
+        "limits": httpx.Limits(max_keepalive_connections=0),
+        "headers": {"Connection": "close"},
+    }
+
+
+def format_api_connection_error(exc: httpx.HTTPError) -> str:
+    return (
+        f"API connection error: {exc}\n"
+        "Check that the Python API is running and reachable."
+    )
 
 
 def request_json(response: httpx.Response, action: str) -> dict:
@@ -218,7 +251,12 @@ def run_interactive_loop(
         if command in {"q", "quit", "exit"}:
             break
         if command in {"b", "board"}:
-            print_game(client, base_url, token, game_id)
+            try:
+                print_game(client, base_url, token, game_id)
+            except RuntimeError as exc:
+                print(exc)
+            except httpx.HTTPError as exc:
+                print(format_api_connection_error(exc))
             continue
 
         try:
@@ -228,6 +266,9 @@ def run_interactive_loop(
                 move_result = make_move(client, base_url, token, game_id, command)
         except RuntimeError as exc:
             print(exc)
+            continue
+        except httpx.HTTPError as exc:
+            print(format_api_connection_error(exc))
             continue
 
         move_was_legal, game_finished = print_move_result(move_result)
@@ -239,6 +280,9 @@ def run_interactive_loop(
                 ai_result = make_ai_move(client, base_url, token, game_id)
             except RuntimeError as exc:
                 print(exc)
+                continue
+            except httpx.HTTPError as exc:
+                print(format_api_connection_error(exc))
                 continue
 
             _, game_finished = print_move_result(ai_result)
@@ -263,14 +307,14 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
-    load_dotenv(ROOT / ".env")
+    load_environment()
     args = parse_args()
 
     created_user = None
     token = None
 
     try:
-        with httpx.Client(timeout=api_timeout()) as client:
+        with httpx.Client(**client_kwargs()) as client:
             token = create_token(client, args.base_url)
 
             if args.game_id:
@@ -315,8 +359,7 @@ def main() -> int:
                 )
 
     except httpx.HTTPError as exc:
-        print(f"API connection error: {exc}", file=sys.stderr)
-        print("Check that the local Python API is running.", file=sys.stderr)
+        print(format_api_connection_error(exc), file=sys.stderr)
         return 1
     except RuntimeError as exc:
         print(str(exc), file=sys.stderr)
@@ -327,7 +370,7 @@ def main() -> int:
     finally:
         if created_user and token and not args.keep:
             try:
-                with httpx.Client(timeout=api_timeout()) as client:
+                with httpx.Client(**client_kwargs()) as client:
                     remove_test_user(client, args.base_url, token, created_user["unique"])
                 print("Temporary user/game removed. Use --keep to leave it in the database.")
             except httpx.HTTPError as exc:

@@ -135,6 +135,24 @@ def test_users():
             "password": "secure_password",
             "first_name": "MateBlack",
         },
+        "trio_one": {
+            "unique": f"trio_one_{run_id}",
+            "email": f"trio_one_{run_id}@example.com",
+            "password": "secure_password",
+            "first_name": "TrioOne",
+        },
+        "trio_two": {
+            "unique": f"trio_two_{run_id}",
+            "email": f"trio_two_{run_id}@example.com",
+            "password": "secure_password",
+            "first_name": "TrioTwo",
+        },
+        "trio_three": {
+            "unique": f"trio_three_{run_id}",
+            "email": f"trio_three_{run_id}@example.com",
+            "password": "secure_password",
+            "first_name": "TrioThree",
+        },
     }
 
 

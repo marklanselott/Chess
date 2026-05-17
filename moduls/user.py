@@ -145,6 +145,7 @@ async def remove(data: RemoveUserRequest, session: AsyncSession = Depends(get_db
 
     if game_ids:
         await session.execute(delete(GameMove).where(GameMove.game_id.in_(game_ids)))
+        await session.execute(delete(OpponentSearch).where(OpponentSearch.game_id.in_(game_ids)))
         await session.execute(delete(Games).where(Games.id.in_(game_ids)))
 
     await session.execute(delete(OpponentSearch).where(OpponentSearch.user_id == user.id))

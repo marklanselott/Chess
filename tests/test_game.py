@@ -1,4 +1,7 @@
+from concurrent.futures import ThreadPoolExecutor
 from uuid import uuid4
+
+import httpx
 
 from .helpers import check_step
 
@@ -29,6 +32,82 @@ def assert_stats(stats, games, wins, losses, draws, rating):
         assert stats["win_rate"] == round((wins / stats["games_finished"]) * 100, 2)
     else:
         assert stats["win_rate"] == 0.0
+
+
+def await_match_or_timeout(api_client, user_id: str, timeout: int = 7):
+    try:
+        return "matched", api_client.await_opponent(user_id, timeout=timeout)
+    except httpx.TimeoutException:
+        return "timeout", user_id
+
+
+def cleanup_users_by_first_name(api_client, first_name: str, unique_prefix: str):
+    users = api_client.search_user("first_name", first_name)["searched"]
+    for user in users:
+        if not user["unique"].startswith(unique_prefix):
+            continue
+        api_client.remove_user_if_exists({
+            "unique": user["unique"],
+            "password": "secure_password",
+        })
+
+
+def test_three_waiting_players_create_only_one_match(api_client, test_users, cleanup_test_users):
+    for first_name, unique_prefix in [
+        ("TrioOne", "trio_one_"),
+        ("TrioTwo", "trio_two_"),
+        ("TrioThree", "trio_three_"),
+    ]:
+        cleanup_users_by_first_name(api_client, first_name, unique_prefix)
+
+    check_step("Register three users for concurrent opponent search")
+    users = [
+        api_client.register_user(test_users["trio_one"]),
+        api_client.register_user(test_users["trio_two"]),
+        api_client.register_user(test_users["trio_three"]),
+    ]
+    user_ids = {user["id"] for user in users}
+
+    check_step("Start opponent search for all three users")
+    for user in users:
+        search = api_client.start_search_opponent(user["id"])
+        assert search["user"]["id"] == user["id"]
+        assert search["opponent"] is None
+
+    check_step("Await all three users at the same time")
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        results = list(executor.map(
+            lambda user: await_match_or_timeout(api_client, user["id"]),
+            users,
+        ))
+
+    matches = [payload for status, payload in results if status == "matched"]
+    timeouts = [payload for status, payload in results if status == "timeout"]
+    internal_matches = [
+        payload
+        for payload in matches
+        if payload["opponent"]["id"] in user_ids
+    ]
+    assert len(internal_matches) == 2, results
+
+    first, second = internal_matches
+    assert first["game"]["id"] == second["game"]["id"]
+    assert first["user"]["id"] == second["opponent"]["id"]
+    assert second["user"]["id"] == first["opponent"]["id"]
+    assert {first["user"]["id"], first["opponent"]["id"]}.issubset(user_ids)
+    unmatched_user_ids = user_ids - {first["user"]["id"], first["opponent"]["id"]}
+    for match in matches:
+        if match["user"]["id"] in unmatched_user_ids:
+            assert match["opponent"]["id"] not in user_ids
+    assert set(timeouts).issubset(unmatched_user_ids)
+
+    check_step("Finish matched games and stop leftover search")
+    api_client.surrender(first["user"]["id"])
+    for match in matches:
+        if match["game"]["id"] != first["game"]["id"]:
+            api_client.surrender(match["user"]["id"])
+    for timed_out_user_id in timeouts:
+        api_client.stop_search_opponent(timed_out_user_id)
 
 
 def test_opponent_search_and_game_flow(api_client, test_users, cleanup_test_users, start_fen):
