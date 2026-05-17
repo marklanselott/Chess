@@ -35,6 +35,24 @@ def get_user_by_unique(token: str, unique: str):
         return data["searched"][0]
     return None
 
+def get_user_stats(token: str, user_uuid: str):
+    """
+    GET /api/user/stats/user_id/{user_uuid}
+    Получить статистику по внутреннему UUID пользователя из БД
+    """
+    # Теперь сюда подставляется uuid (например, 5bf04acd-625b-46b5-9dd6-57cc797dcabe)
+    url = f"{base_url.rstrip('/')}/api/user/stats/user_id/{user_uuid}"
+    params = {"token": token}
+    try:
+        response = requests.get(url, params=params)
+        if response.status_code == 200:
+            return response.json()
+        else:
+            print(f"Ошибка GET /api/user/stats/ [{response.status_code}]: {response.text}")
+            return None
+    except Exception as e:
+        print(f"Ошибка сети в get_user_stats: {e}")
+        return None
 
 def update_user(token: str, user_id: str, payload: dict):
     params = {"token": token}
@@ -157,6 +175,51 @@ def make_chess_move(token: str, game_id: str, from_to: str):
     except Exception as e:
         print(f"Ошибка сети в make_chess_move: {e}")
         return {"status": "error", "detail": str(e)}
+
+def start_ai_game(token, user_id, user_color="white", ai_difficulty=3):
+    """
+    POST /api/game/ai/start
+    Запуск игры с ИИ
+    """
+    url = f"{base_url.rstrip('/')}/api/game/ai/start"
+    params = {
+        "user_id": user_id,
+        "user_color": user_color,
+        "ai_difficulty": ai_difficulty,
+        "token": token
+    }
+    try:
+        # Добавляем timeout=15 секунд
+        response = requests.post(url, params=params, timeout=15)
+        return response
+    except requests.exceptions.Timeout:
+        print("Ошибка: Превышено время ожидания ответа от сервера (start_ai_game)")
+        return None
+    except Exception as e:
+        print(f"Ошибка start_ai_game: {e}")
+        return None
+
+def make_ai_move(token, game_id):
+    """
+    POST /api/game/ai/move
+    Запрос на ответный ход ИИ
+    """
+    url = f"{base_url.rstrip('/')}/api/game/ai/move"
+    params = {
+        "game_id": game_id,
+        "token": token
+    }
+    try:
+        # Для самого хода ИИ можно поставить чуть больше (например, 20 секунд),
+        # так как шахматному движку на сервере нужно время подумать.
+        response = requests.post(url, params=params, timeout=20)
+        return response
+    except requests.exceptions.Timeout:
+        print("Ошибка: Превышено время ожидания хода ИИ (make_ai_move)")
+        return None
+    except Exception as e:
+        print(f"Ошибка make_ai_move: {e}")
+        return None
 
 
 def surrender_game(token: str, user_id: str):

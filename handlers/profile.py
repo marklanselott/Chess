@@ -1,6 +1,7 @@
 from telethon import events
+import asyncio
 
-from api import get_token, get_user, update_user, delete_user
+from api import get_token, get_user, update_user, delete_user, get_user_stats
 from menus import authreg, main_menu, profile_menu, remake_back
 from state import user_state
 
@@ -17,17 +18,40 @@ def register_profile_handlers(bot):
 
 async def profile(event: events.CallbackQuery.Event):
     token = get_token()
-    result = get_user(token, event.chat_id)
+    tg_id = event.chat_id
+    
+    # 1. Сначала делаем твой старый рабочий запрос по Telegram ID
+    user_search_result = await asyncio.to_thread(get_user, token, tg_id)
 
-    if result.get("searched"):
-        user = result["searched"][0]
-        first_name = user.get("first_name", "Не указано")
-        unique = user.get("unique", "Не указано")
-        rating = user.get("rating", 0)
-        games = user.get("games_count", 0)
-        wins = user.get("wins", 0)
-        losses = user.get("losses", 0)
-        wl = round(wins / losses, 2) if losses > 0 else wins
+    # Проверяем, нашел ли бот юзера через старый метод
+    if not user_search_result or not user_search_result.get("searched"):
+        await event.answer("❌ Ошибка: пользователь не найден в базе данных.", alert=True)
+        return
+
+    # Вытаскиваем базовые данные юзера
+    user_base = user_search_result["searched"][0]
+    
+    # ДОСТАЕМ ТОТ САМЫЙ UUID ИЗ БАЗЫ (поле "id" внутри searched)
+    user_uuid = user_base.get("id") 
+    
+    if not user_uuid:
+        await event.answer("❌ Ошибка: не удалось получить UUID пользователя.", alert=True)
+        return
+
+    # 2. Теперь дергаем эндпоинт статистики, передавая туда UUID, как просил админ!
+    stats_data = await asyncio.to_thread(get_user_stats, token, user_uuid)
+
+    if stats_data and "user" in stats_data:
+        user_info = stats_data["user"]
+        first_name = user_info.get("first_name", "Не указано")
+        unique = user_info.get("unique", "Не указано")
+        
+        # Забираем статистику с верхнего уровня JSON
+        rating = stats_data.get("rating", 0)
+        games = stats_data.get("games_total", 0)
+        wins = stats_data.get("wins", 0)
+        losses = stats_data.get("losses", 0)
+        wl = stats_data.get("win_loss_ratio", 0)
 
         profile_text = (
             f"👤 **Ваш профиль**\n\n"
@@ -43,7 +67,7 @@ async def profile(event: events.CallbackQuery.Event):
 
         await event.edit(profile_text, buttons=profile_menu)
     else:
-        await event.answer("❌ Ошибка: данные профиля не найдены.", alert=True)
+        await event.answer("❌ Ошибка бэкенда при получении статистики.", alert=True)
 
 
 async def nameremake(event):
