@@ -12,6 +12,7 @@ public class GameManager
     public bool IsCheckmate { get; private set; }
     public bool IsStalemate { get; private set; }
     public bool IsCheck { get; private set; }
+    public bool IsDrawByInsufficientMaterial { get; private set; }
 
     public bool IsDrawByRepetition { get; private set; }
     public Dictionary<string, int> PositionHistory { get; private set; }
@@ -119,6 +120,8 @@ public class GameManager
             IsStalemate = false;
         }
 
+        IsDrawByInsufficientMaterial = CheckInsufficientMaterial();
+
         return true; 
     }
 
@@ -167,5 +170,31 @@ public class GameManager
         }
 
         return moveGenerator.GetLegalMoves(Board, pos); 
+    }
+
+
+    private bool CheckInsufficientMaterial()
+    {
+        var whitePieces = Board.GetPiecesOfColor(PieceColor.White);
+        var blackPieces = Board.GetPiecesOfColor(PieceColor.Black);
+
+        if (whitePieces.Any(p => p.Type == PieceType.Pawn || p.Type == PieceType.Rook || p.Type == PieceType.Queen) ||
+            blackPieces.Any(p => p.Type == PieceType.Pawn || p.Type == PieceType.Rook || p.Type == PieceType.Queen))
+        {
+            return false;
+        }
+
+        var allMinorPieces = new List<Piece>();
+        allMinorPieces.AddRange(whitePieces.Where(p => p.Type != PieceType.King));
+        allMinorPieces.AddRange(blackPieces.Where(p => p.Type != PieceType.King));
+
+        if (allMinorPieces.Count == 0) 
+            return true;
+
+        if (allMinorPieces.Count == 1) 
+            return true;
+
+
+        return false;
     }
 }
