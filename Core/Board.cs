@@ -249,4 +249,24 @@ public class Board
         };
         return new Piece(type, color);
     }
+
+
+    public Piece? MakeMove(Position from, Position to)
+    {
+        Piece? capturedPiece = Grid[to.X, to.Y]; 
+        
+
+        Grid[to.X, to.Y] = Grid[from.X, from.Y];
+        Grid[from.X, from.Y] = null;
+
+        return capturedPiece;
+    }
+
+
+    public void UndoMove(Position from, Position to, Piece? capturedPiece)
+    {
+        Grid[from.X, from.Y] = Grid[to.X, to.Y];
+        
+        Grid[to.X, to.Y] = capturedPiece;
+    }
 }
