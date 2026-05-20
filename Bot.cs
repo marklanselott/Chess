@@ -35,20 +35,25 @@ public class Bot
 
         foreach (var move in allMoves)
         {
-            var copyBoard = game.Board.Clone();
-            copyBoard.Move(move.from, move.to);
-
-            var movedPiece = copyBoard.GetPiece(move.to);
-            if (movedPiece != null && movedPiece.Type == PieceType.Pawn)
+            Piece? capturedPiece = game.Board.MakeMove(move.from, move.to);
+            
+            Piece? originalPiece = game.Board.GetPiece(move.to);
+            bool isPromotion = false;
+            if (originalPiece != null && originalPiece.Type == PieceType.Pawn && 
+               ((originalPiece.Color == PieceColor.White && move.to.Y == 0) || 
+                (originalPiece.Color == PieceColor.Black && move.to.Y == 7)))
             {
-                if ((movedPiece.Color == PieceColor.White && move.to.Y == 0) || 
-                    (movedPiece.Color == PieceColor.Black && move.to.Y == 7))
-                {
-                    copyBoard.Grid[move.to.X, move.to.Y] = new Piece(PieceType.Queen, movedPiece.Color);
-                }
+                isPromotion = true;
+                game.Board.Grid[move.to.X, move.to.Y] = new Piece(PieceType.Queen, originalPiece.Color);
             }
 
-            int score = Minimax(copyBoard, _depth - 1, alpha, beta, nextTurn, game.PositionHistory);
+            int score = Minimax(game.Board, _depth - 1, alpha, beta, nextTurn, game.PositionHistory);
+
+            if (isPromotion)
+            {
+                game.Board.Grid[move.to.X, move.to.Y] = originalPiece;
+            }
+            game.Board.UndoMove(move.from, move.to, capturedPiece);
 
             if (_botColor == PieceColor.White)
             {
@@ -110,21 +115,25 @@ public class Bot
             int maxScore = int.MinValue;
             foreach (var move in moves)
             {
-                var copy = board.Clone();
-                copy.Move(move.from, move.to);
-
-                var movedPiece = copy.GetPiece(move.to);
-
-                if (movedPiece != null && movedPiece.Type == PieceType.Pawn)
+                Piece? capturedPiece = board.MakeMove(move.from, move.to);
+                
+                Piece? originalPiece = board.GetPiece(move.to);
+                bool isPromotion = false;
+                if (originalPiece != null && originalPiece.Type == PieceType.Pawn && move.to.Y == 0)
                 {
-                    if ((movedPiece.Color == PieceColor.White && move.to.Y == 0) || 
-                        (movedPiece.Color == PieceColor.Black && move.to.Y == 7))
-                    {
-                        copy.Grid[move.to.X, move.to.Y] = new Piece(PieceType.Queen, movedPiece.Color);
-                    }
+                    isPromotion = true;
+                    board.Grid[move.to.X, move.to.Y] = new Piece(PieceType.Queen, originalPiece.Color);
                 }
 
-                int score = Minimax(copy, depth - 1, alpha, beta, nextTurn, gameHistory);
+                int score = Minimax(board, depth - 1, alpha, beta, nextTurn, gameHistory);
+
+                if (isPromotion)
+                {
+                    board.Grid[move.to.X, move.to.Y] = originalPiece;
+                }
+
+                board.UndoMove(move.from, move.to, capturedPiece);
+
                 maxScore = Math.Max(maxScore, score);
                 alpha = Math.Max(alpha, score);
                 
@@ -132,26 +141,31 @@ public class Bot
             }
             return maxScore;
         }
-        else
+        else 
         {
             int minScore = int.MaxValue;
             foreach (var move in moves)
             {
-                var copy = board.Clone();
-                copy.Move(move.from, move.to);
+                Piece? capturedPiece = board.MakeMove(move.from, move.to);
+                
+                Piece? originalPiece = board.GetPiece(move.to);
+                bool isPromotion = false;
 
-                var movedPiece = copy.GetPiece(move.to);
-
-                if (movedPiece != null && movedPiece.Type == PieceType.Pawn)
+                if (originalPiece != null && originalPiece.Type == PieceType.Pawn && move.to.Y == 7)
                 {
-                    if ((movedPiece.Color == PieceColor.White && move.to.Y == 0) || 
-                        (movedPiece.Color == PieceColor.Black && move.to.Y == 7))
-                    {
-                        copy.Grid[move.to.X, move.to.Y] = new Piece(PieceType.Queen, movedPiece.Color);
-                    }
+                    isPromotion = true;
+                    board.Grid[move.to.X, move.to.Y] = new Piece(PieceType.Queen, originalPiece.Color);
                 }
 
-                int score = Minimax(copy, depth - 1, alpha, beta, nextTurn, gameHistory);
+                int score = Minimax(board, depth - 1, alpha, beta, nextTurn, gameHistory);
+
+                if (isPromotion)
+                {
+                    board.Grid[move.to.X, move.to.Y] = originalPiece;
+                }
+
+                board.UndoMove(move.from, move.to, capturedPiece);
+
                 minScore = Math.Min(minScore, score);
                 beta = Math.Min(beta, score);
                 
@@ -160,6 +174,38 @@ public class Bot
             return minScore;
         }
     }
+    
+
+    private int GuessMoveScore(Board board, Position from, Position to)
+    {
+        int guess = 0;
+        Piece? movingPiece = board.GetPiece(from);
+        Piece? capturedPiece = board.GetPiece(to);
+
+        if (capturedPiece != null && movingPiece != null)
+        {
+            int victimValue = GetPieceValue(capturedPiece.Type);
+            int attackerValue = GetPieceValue(movingPiece.Type);
+            
+            guess = 10 * victimValue - attackerValue;
+        }
+        
+        return guess;
+    }
+
+    private int GetPieceValue(PieceType type)
+    {
+        return type switch {
+            PieceType.Pawn => 100,
+            PieceType.Knight => 320,
+            PieceType.Bishop => 330,
+            PieceType.Rook => 500,
+            PieceType.Queen => 900,
+            PieceType.King => 20000,
+            _ => 0
+        };
+    }
+
 
     // collect all legal moves for current turn
     private List<(Position from, Position to)> GetAllMoves(Board board, PieceColor color)
@@ -178,7 +224,7 @@ public class Bot
             }
         }
 
-        moves = moves.OrderByDescending(m => board.GetPiece(m.to) != null ? 1 : 0).ToList();
+        moves = moves.OrderByDescending(m => GuessMoveScore(board, m.from, m.to)).ToList();
 
         return moves;
     }
