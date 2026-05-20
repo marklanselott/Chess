@@ -8,8 +8,8 @@
     ".NETCoreApp,Version=v10.0": {
       "ChessAPI/1.0.0": {
         "dependencies": {
-          "ChessAIbyMrNaniii": "1.0.5",
-          "ChessLibbyMrNaniii": "1.0.7",
+          "ChessAIbyMrNaniii": "1.0.4",
+          "ChessLibbyMrNaniii": "1.0.5",
           "Microsoft.AspNetCore.OpenApi": "10.0.1",
           "Swashbuckle.AspNetCore": "10.1.7"
         },
@@ -17,22 +17,22 @@
           "ChessAPI.dll": {}
         }
       },
-      "ChessAIbyMrNaniii/1.0.5": {
+      "ChessAIbyMrNaniii/1.0.4": {
         "dependencies": {
-          "ChessLibbyMrNaniii": "1.0.7"
+          "ChessLibbyMrNaniii": "1.0.5"
         },
         "runtime": {
           "lib/net10.0/ChessAI.dll": {
-            "assemblyVersion": "1.0.5.0",
-            "fileVersion": "1.0.5.0"
+            "assemblyVersion": "1.0.4.0",
+            "fileVersion": "1.0.4.0"
           }
         }
       },
-      "ChessLibbyMrNaniii/1.0.7": {
+      "ChessLibbyMrNaniii/1.0.5": {
         "runtime": {
           "lib/net10.0/ChessLib.dll": {
-            "assemblyVersion": "1.0.7.0",
-            "fileVersion": "1.0.7.0"
+            "assemblyVersion": "1.0.5.0",
+            "fileVersion": "1.0.5.0"
           }
         }
       },
@@ -100,19 +100,19 @@
       "serviceable": false,
       "sha512": ""
     },
-    "ChessAIbyMrNaniii/1.0.5": {
+    "ChessAIbyMrNaniii/1.0.4": {
       "type": "package",
       "serviceable": true,
-      "sha512": "sha512-F+THcxgfIccNHm4b0bkyjgRA6srEIqosI2LgJMfe+swa2RQBBHHi7fDFeZFOdoAeTTYgdCztznWhKi/orsgPWA==",
-      "path": "chessaibymrnaniii/1.0.5",
-      "hashPath": "chessaibymrnaniii.1.0.5.nupkg.sha512"
+      "sha512": "sha512-Kw0FTVH3xp3REiNWzGU2GYjotXfPYD9blNvEYjkodiwob8G3iuvMrOsguUcU81hSduqnrbufE7Q5zMhB+BBDPg==",
+      "path": "chessaibymrnaniii/1.0.4",
+      "hashPath": "chessaibymrnaniii.1.0.4.nupkg.sha512"
     },
-    "ChessLibbyMrNaniii/1.0.7": {
+    "ChessLibbyMrNaniii/1.0.5": {
       "type": "package",
       "serviceable": true,
-      "sha512": "sha512-vaVr1PbFXjHazLBJAP3vzwid/0gLd62Irx+fE00AwKqSr9HE1g4GTmso2WJKsBFd5ih5UwS7SX0GJPU8vs16+A==",
-      "path": "chesslibbymrnaniii/1.0.7",
-      "hashPath": "chesslibbymrnaniii.1.0.7.nupkg.sha512"
+      "sha512": "sha512-lJ4bi6oCUSMX0Hqok9+bE2o/FLDs6wN53wYQ3sV1MQVXtCR9J4YSzUloRmaKkYOayip0WV24L0iXPE514dqzpw==",
+      "path": "chesslibbymrnaniii/1.0.5",
+      "hashPath": "chesslibbymrnaniii.1.0.5.nupkg.sha512"
     },
     "Microsoft.AspNetCore.OpenApi/10.0.1": {
       "type": "package",

@@ -47,6 +47,20 @@ public class ChessController : ControllerBase
                 return Ok(new MoveResponse { IsLegal = false, Message = "Illegal move." });
             }
 
+            if (promotionOptions != null && !string.IsNullOrEmpty(request.PromoteTo))
+            {
+                PieceType chosenType = request.PromoteTo.ToLower() switch
+                {
+                    "q" => PieceType.Queen,
+                    "r" => PieceType.Rook,
+                    "b" => PieceType.Bishop,
+                    "n" => PieceType.Knight,
+                    _ => PieceType.Queen 
+                };
+
+                game.PromotePawn(toPos, chosenType);
+            }
+  
             PieceColor nextTurn = currentTurn == PieceColor.White ? PieceColor.Black : PieceColor.White;
 
             return Ok(new MoveResponse
@@ -123,7 +137,12 @@ public class ChessController : ControllerBase
 
             var bestMove = aiBot.FindBestMove(game);
 
-            game.MakeMove(bestMove.from, bestMove.to, out _);
+            game.MakeMove(bestMove.from, bestMove.to, out var promotionOptions);
+
+            if (promotionOptions != null)
+            {
+                game.PromotePawn(bestMove.to, PieceType.Queen);
+            }
 
             string fromStr = $"{(char)('a' + bestMove.from.X)}{8 - bestMove.from.Y}";
             string toStr = $"{(char)('a' + bestMove.to.X)}{8 - bestMove.to.Y}";

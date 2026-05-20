@@ -7,8 +7,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="ChessAIbyMrNaniii" Version="1.0.4" />
-    <PackageReference Include="ChessLibbyMrNaniii" Version="1.0.5" />
+    <PackageReference Include="ChessAIbyMrNaniii" Version="1.0.5" />
+    <PackageReference Include="ChessLibbyMrNaniii" Version="1.0.7" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.1" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="10.1.7" />
   </ItemGroup>
