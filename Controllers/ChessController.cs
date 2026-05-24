@@ -199,15 +199,14 @@ public class ChessController : ControllerBase
             List<MoveAnalysis> results = new List<MoveAnalysis>();
             int previousEval = 0;
 
-            for (int i = 0; i < historyFens.Count - 1; i++)
+            for (int i = 0; i < historyFens.Count; i++)
             {
                 string currentFen = historyFens[i];
                 Board board = new Board();
                 board.LoadFromFen(currentFen);
                 
                 string[] fenParts = currentFen.Split(' ');
-                PieceColor currentTurn = fenParts[1] == "w" ?
-                PieceColor.White : PieceColor.Black;
+                PieceColor currentTurn = fenParts[1] == "w" ? PieceColor.White : PieceColor.Black;
 
                 GameManager game = new GameManager(board, currentTurn);
 
@@ -216,7 +215,20 @@ public class ChessController : ControllerBase
                 
                 int currentScore = Evaluator.Evaluate(game.Board);
                 string annotation = "Normal";
-                
+
+                if (bestMove.from.X == 0 && bestMove.from.Y == 0 && bestMove.to.X == 0 && bestMove.to.Y == 0)
+                {
+                    MoveGenerator moveGen = new MoveGenerator(game.State);
+                    if (moveGen.IsKingInCheck(game.Board, currentTurn))
+                    {
+                        currentScore = currentTurn == PieceColor.White ? -100000 : 100000;
+                    }
+                    else
+                    {
+                        currentScore = 0;
+                    }
+                }
+
                 string fromStr = $"{(char)('a' + bestMove.from.X)}{8 - bestMove.from.Y}";
                 string toStr = $"{(char)('a' + bestMove.to.X)}{8 - bestMove.to.Y}";
 
@@ -224,7 +236,12 @@ public class ChessController : ControllerBase
                 {
                     int delta = currentScore - previousEval;
                     
-                    if (currentTurn == PieceColor.Black) delta = -delta;
+                    PieceColor playerWhoJustMoved = currentTurn == PieceColor.White ? PieceColor.Black : PieceColor.White;
+
+                    if (playerWhoJustMoved == PieceColor.Black) 
+                    {
+                        delta = -delta;
+                    }
 
                     if (delta <= -300) annotation = "Blunder";     
                     else if (delta <= -100) annotation = "Mistake"; 

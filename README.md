@@ -70,8 +70,8 @@ Use `*` or `0.0.0.0` to allow external connections.
 ### 1. Make a Player Move
 Validates a move made by a human player. Supports pawn promotion.
 
-* **Endpoint:** `POST /api/chess/move`
-* **Request Body:**
+**Endpoint:** `POST /api/chess/move`
+**Request Body:**
   
     {
       "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
@@ -82,7 +82,7 @@ Validates a move made by a human player. Supports pawn promotion.
 
   *(Note: `promoteTo` is optional but required if a pawn reaches the final rank. Valid options: `"q", "r", "b", "n"`).*
 
-* **Response (200 OK):**
+**Response (200 OK):**
   
     {
       "isLegal": true,
@@ -97,15 +97,15 @@ Validates a move made by a human player. Supports pawn promotion.
 ### 2. Get Legal Moves for a Piece
 Returns a list of all valid squares a piece can move to from a given starting square. Highly useful for UI logic (e.g., highlighting valid moves when a user clicks a piece).
 
-* **Endpoint:** `POST /api/chess/legal-moves`
-* **Request Body:**
+**Endpoint:** `POST /api/chess/legal-moves`
+**Request Body:**
   
     {
       "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
       "from": "e2"
     }
 
-* **Response (200 OK):**
+**Response (200 OK):**
   
     {
       "legalMoves": [
@@ -119,8 +119,8 @@ Returns a list of all valid squares a piece can move to from a given starting sq
 ### 3. Generate an AI Move
 Calculates the best move for the computer. If the bot promotes a pawn, it automatically selects a Queen.
 
-* **Endpoint:** `POST /api/chess/bot-move`
-* **Request Body:**
+**Endpoint:** `POST /api/chess/bot-move`
+**Request Body:**
   
     {
       "fen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1",
@@ -129,7 +129,7 @@ Calculates the best move for the computer. If the bot promotes a pawn, it automa
 
   *(Note: `depth` controls the AI difficulty).*
 
-* **Response (200 OK):**
+**Response (200 OK):**
   
     {
       "newFen": "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2",
@@ -144,8 +144,8 @@ Calculates the best move for the computer. If the bot promotes a pawn, it automa
 Since analyzing a full game array at higher depths is resource-intensive, this feature uses an async polling pattern to prevent HTTP timeouts.
 
 #### Step 4a: Start the Analysis
-* **Endpoint:** `POST /api/chess/analyze/start`
-* **Request Body:**
+**Endpoint:** `POST /api/chess/analyze/start`
+**Request Body:**
   
     {
       "historyFens": [
@@ -156,7 +156,7 @@ Since analyzing a full game array at higher depths is resource-intensive, this f
       "depth": 4
     }
 
-* **Response (202 Accepted):**
+**Response (202 Accepted):**
   
     {
       "jobId": "a1b2c3d4-e5f6-7890-1234-56789abcdef0",
@@ -167,8 +167,8 @@ Since analyzing a full game array at higher depths is resource-intensive, this f
 #### Step 4b: Check Analysis Status (Polling)
 The client frontend should poll this endpoint every 3-5 seconds. **Note:** Once the status is "Completed", the job is deleted from server memory.
 
-* **Endpoint:** `GET /api/chess/analyze/status/{jobId}`
-* **Response (When finished):**
+**Endpoint:** `GET /api/chess/analyze/status/{jobId}`
+**Response (When finished):**
   
     {
       "jobId": "a1b2c3d4...",
