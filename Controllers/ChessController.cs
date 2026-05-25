@@ -198,6 +198,8 @@ public class ChessController : ControllerBase
         {
             List<MoveAnalysis> results = new List<MoveAnalysis>();
             int previousEval = 0;
+            
+            string previousBestMove = ""; 
 
             for (int i = 0; i < historyFens.Count; i++)
             {
@@ -229,15 +231,19 @@ public class ChessController : ControllerBase
                     }
                 }
 
-                string fromStr = $"{(char)('a' + bestMove.from.X)}{8 - bestMove.from.Y}";
-                string toStr = $"{(char)('a' + bestMove.to.X)}{8 - bestMove.to.Y}";
+                string currentBestMove = "";
+                if (!(bestMove.from.X == 0 && bestMove.from.Y == 0 && bestMove.to.X == 0 && bestMove.to.Y == 0))
+                {
+                    string fromStr = $"{(char)('a' + bestMove.from.X)}{8 - bestMove.from.Y}";
+                    string toStr = $"{(char)('a' + bestMove.to.X)}{8 - bestMove.to.Y}";
+                    currentBestMove = fromStr + toStr;
+                }
 
                 if (i > 0)
                 {
                     int delta = currentScore - previousEval;
-                    
                     PieceColor playerWhoJustMoved = currentTurn == PieceColor.White ? PieceColor.Black : PieceColor.White;
-
+                    
                     if (playerWhoJustMoved == PieceColor.Black) 
                     {
                         delta = -delta;
@@ -249,15 +255,18 @@ public class ChessController : ControllerBase
                     else if (delta >= 200) annotation = "Great";    
                 }
 
-                previousEval = currentScore;
-
                 results.Add(new MoveAnalysis 
                 {
                     Fen = currentFen,
                     Evaluation = currentScore, 
-                    BestMove = fromStr + toStr, 
+
+                    BestMove = (i == 0) ? currentBestMove : previousBestMove, 
+                    
                     Annotation = annotation
                 });
+
+                previousEval = currentScore;
+                previousBestMove = currentBestMove;
             }
 
             if (_analysisJobs.TryGetValue(jobId, out var jobInfo))
