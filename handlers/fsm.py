@@ -49,33 +49,33 @@ async def handle_user_text(event):
 async def handle_auth_step(event, step, text):
     if step == "reg_name":
         if len(text) < 2 or len(text) > 16:
-            await event.reply("❌ Имя должно быть от 2 до 16 символов. Попробуйте еще раз:")
+            await event.reply("❌ Ім'я має бути від 2 до 16 символів. Спробуйте ще раз:")
             return
 
         if not text.isalnum():
-            await event.reply("❌ Имя может содержать только буквы и цифры!")
+            await event.reply("❌ Ім'я може містити тільки літери та цифри!")
             return
 
         user_state[event.sender_id]["first_name"] = text
         user_state[event.sender_id]["step"] = "reg_unique"
-        await event.respond(f"Приятно познакомиться, {text}! Придумайте логин (unique):")
+        await event.respond(f"Приємно познайомитися, {text}! Придумайте логін (unique):")
 
     elif step == "reg_unique":
         if not text.isalnum():
-            await event.reply("❌ Логин может содержать только буквы и цифры!")
+            await event.reply("❌ Логін може містити тільки літери та цифри!")
             return
 
         if len(text) < 2 or len(text) > 16:
-            await event.reply("❌ Логин должен быть от 2 до 16 символов:")
+            await event.reply("❌ Логін має бути від 2 до 16 символів:")
             return
 
         user_state[event.sender_id]["unique"] = text
         user_state[event.sender_id]["step"] = "reg_password"
-        await event.respond("🔒 Теперь придумайте пароль (от 6 до 12 символов):")
+        await event.respond("🔒 Тепер придумайте пароль (від 6 до 12 символів):")
 
     elif step == "reg_password":
         if len(text) < 6 or len(text) > 12:
-            await event.reply("❌ Пароль должен быть от 6 до 12 символов. Введите еще раз:")
+            await event.reply("❌ Пароль має бути від 6 до 12 символів. Введіть ще раз:")
             return
 
         data = user_state[event.sender_id]
@@ -91,15 +91,15 @@ async def handle_auth_step(event, step, text):
             )
 
             user_state[event.sender_id] = None
-            await event.respond(f"✅ Регистрация завершена! Добро пожаловать, {data['first_name']}.", buttons=main_menu)
+            await event.respond(f"✅ Реєстрацію завершено! Ласкаво просимо, {data['first_name']}.", buttons=main_menu)
         except Exception as e:
-            await event.respond("⚠️ Произошла ошибка при регистрации. Попробуйте позже.")
+            await event.respond("⚠️ Виникла помилка під час реєстрації. Спробуйте пізніше.")
             print(f"Reg error: {e}")
 
     elif step == "auth_unique":
         user_state[event.sender_id]["login_try"] = text
         user_state[event.sender_id]["step"] = "auth_password"
-        await event.respond("🔒 Введите ваш пароль:")
+        await event.respond("🔒 Введіть ваш пароль:")
 
     elif step == "auth_password":
         login = user_state.get(event.sender_id, {}).get("login_try")
@@ -110,7 +110,7 @@ async def handle_auth_step(event, step, text):
 
         if user_data and str(user_data.get("password")) == password:
             user_state[event.sender_id] = None
-            await event.respond(f"✅ Вход выполнен! Привет, {user_data.get('first_name')}!", buttons=main_menu)
+            await event.respond(f"✅ Вхід виконано! Привіт, {user_data.get('first_name')}!", buttons=main_menu)
         else:
-            await event.respond("❌ Ошибка: логин или пароль неверны. Попробуйте снова через /start")
+            await event.respond("❌ Помилка: логін або пароль неправильні. Спробуйте знову через /start")
             user_state[event.sender_id] = None

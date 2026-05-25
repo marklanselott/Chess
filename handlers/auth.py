@@ -16,17 +16,17 @@ async def start(event: events.NewMessage.Event):
     result = get_user(token, event.chat_id)
 
     if not result.get("searched"):
-        await event.respond("Привет! Ты не зарегистрирован. Выбери действие:", buttons=authreg)
+        await event.respond("Привіт! Ти не зареєстрований. Обери дію:", buttons=authreg)
     else:
         user = result["searched"][0]
-        await event.respond(f"С возвращением, {user.get('first_name')}!", buttons=main_menu)
+        await event.respond(f"З поверненням, {user.get('first_name')}!", buttons=main_menu)
 
 
 async def start_reg(event):
     user_state[event.sender_id] = {"step": "reg_name"}
-    await event.edit("📝 Введите ваше Имя:")
+    await event.edit("📝 Введіть ваше Ім'я:")
 
 
 async def start_auth(event):
     user_state[event.sender_id] = {"step": "auth_unique"}
-    await event.edit("🔑 Введите ваш логин (unique):")
+    await event.edit("🔑 Введіть ваш логін (unique):")

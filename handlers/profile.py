@@ -20,33 +20,33 @@ async def profile(event: events.CallbackQuery.Event):
     token = get_token()
     tg_id = event.chat_id
     
-    # 1. Сначала делаем твой старый рабочий запрос по Telegram ID
+    # 1. Спочатку робимо старий робочий запит за Telegram ID
     user_search_result = await asyncio.to_thread(get_user, token, tg_id)
 
-    # Проверяем, нашел ли бот юзера через старый метод
+    # Перевіряємо, чи знайшов бот юзера через старий метод
     if not user_search_result or not user_search_result.get("searched"):
-        await event.answer("❌ Ошибка: пользователь не найден в базе данных.", alert=True)
+        await event.answer("❌ Помилка: користувача не знайдено в базі даних.", alert=True)
         return
 
-    # Вытаскиваем базовые данные юзера
+    # Витягуємо базові дані юзера
     user_base = user_search_result["searched"][0]
     
-    # ДОСТАЕМ ТОТ САМЫЙ UUID ИЗ БАЗЫ (поле "id" внутри searched)
+    # ДІСТАЄМО UUID З БАЗИ (поле "id" всередині searched)
     user_uuid = user_base.get("id") 
     
     if not user_uuid:
-        await event.answer("❌ Ошибка: не удалось получить UUID пользователя.", alert=True)
+        await event.answer("❌ Помилка: не вдалося отримати UUID користувача.", alert=True)
         return
 
-    # 2. Теперь дергаем эндпоинт статистики, передавая туда UUID, как просил админ!
+    # 2. Тепер смикаємо ендпоінт статистики, передаючи туди UUID
     stats_data = await asyncio.to_thread(get_user_stats, token, user_uuid)
 
     if stats_data and "user" in stats_data:
         user_info = stats_data["user"]
-        first_name = user_info.get("first_name", "Не указано")
-        unique = user_info.get("unique", "Не указано")
+        first_name = user_info.get("first_name", "Не вказано")
+        unique = user_info.get("unique", "Не вказано")
         
-        # Забираем статистику с верхнего уровня JSON
+        # Забираємо статистику з верхнього рівня JSON
         rating = stats_data.get("rating", 0)
         games = stats_data.get("games_total", 0)
         wins = stats_data.get("wins", 0)
@@ -54,41 +54,41 @@ async def profile(event: events.CallbackQuery.Event):
         wl = stats_data.get("win_loss_ratio", 0)
 
         profile_text = (
-            f"👤 **Ваш профиль**\n\n"
-            f"🆔 Логин: `{unique}`\n"
-            f"📝 Имя: {first_name}\n"
+            f"👤 **Ваш профіль**\n\n"
+            f"🆔 Логін: `{unique}`\n"
+            f"📝 Ім'я: {first_name}\n"
             f"--- --- --- ---\n"
             f"♟ Ваш рейтинг: {rating}\n"
-            f"👾 Количество игр: {games}\n"
-            f"🏆 Побед: {wins}\n"
-            f"🏳️ Поражений: {losses}\n"
+            f"👾 Кількість ігор: {games}\n"
+            f"🏆 Перемог: {wins}\n"
+            f"🏳️ Поразок: {losses}\n"
             f"📊 W/L: {wl}"
         )
 
         await event.edit(profile_text, buttons=profile_menu)
     else:
-        await event.answer("❌ Ошибка бэкенда при получении статистики.", alert=True)
+        await event.answer("❌ Помилка бекенду при отриманні статистики.", alert=True)
 
 
 async def nameremake(event):
     user_state[event.sender_id] = {"step": "wait_new_name"}
-    await event.edit("✏️ Введите новое **Имя** (2-20 символов):", buttons=remake_back)
+    await event.edit("✏️ Введіть нове **Ім'я** (2-20 символів):", buttons=remake_back)
 
 
 async def loginremake(event):
     user_state[event.sender_id] = {"step": "wait_new_unique"}
-    await event.edit("✏️ Введите новый **Логин** (2-16 символов, только буквы и цифры):", buttons=remake_back)
+    await event.edit("✏️ Введіть новий **Логін** (2-16 символів, тільки букви та цифри):", buttons=remake_back)
 
 
 async def passwordremake(event):
     user_state[event.sender_id] = {"step": "wait_new_password"}
-    await event.edit("🔒 Введите **новый пароль** (от 6 до 12 символов):", buttons=remake_back)
+    await event.edit("🔒 Введіть **новий пароль** (від 6 до 12 символів):", buttons=remake_back)
 
 
 async def confirmdelete(event):
     user_state[event.sender_id] = {"step": "wait_delete_login"}
     await event.edit(
-        "⚠️ **УДАЛЕНИЕ АККАУНТА**\n\nДля подтверждения введите ваш **Логин (unique)**:",
+        "⚠️ **ВИДАЛЕННЯ АКАУНТУ**\n\nДля підтвердження введіть ваш **Логін (unique)**:",
         buttons=remake_back,
     )
 
@@ -102,8 +102,8 @@ async def remakeback(event):
 
         if result.get("searched"):
             user = result["searched"][0]
-            first_name = user.get("first_name", "Не указано")
-            unique = user.get("unique", "Не указано")
+            first_name = user.get("first_name", "Не вказано")
+            unique = user.get("unique", "Не вказано")
             rating = user.get("rating", 0)
             games = user.get("games_count", 0)
             wins = user.get("wins", 0)
@@ -111,27 +111,27 @@ async def remakeback(event):
             wl = round(wins / losses, 2) if losses > 0 else wins
 
             profile_text = (
-                f"👤 **Ваш профиль**\n\n"
-                f"🆔 Логин: `{unique}`\n"
-                f"📝 Имя: {first_name}\n"
+                f"👤 **Ваш профіль**\n\n"
+                f"🆔 Логін: `{unique}`\n"
+                f"📝 Ім'я: {first_name}\n"
                 f"--- --- --- ---\n"
                 f"♟ Ваш рейтинг: {rating}\n"
-                f"👾 Количество игр: {games}\n"
-                f"🏆 Побед: {wins}\n"
-                f"🏳️ Поражений: {losses}\n"
+                f"👾 Кількість ігор: {games}\n"
+                f"🏆 Перемог: {wins}\n"
+                f"🏳️ Поразок: {losses}\n"
                 f"📊 W/L: {wl}"
             )
 
             await event.edit(profile_text, buttons=profile_menu)
         else:
-            await event.edit("❌ Ошибка: профиль не найден.", buttons=main_menu)
+            await event.edit("❌ Помилка: профіль не знайдено.", buttons=main_menu)
     except Exception as e:
-        print(f"Ошибка в remakeback: {e}")
+        print(f"Помилка в remakeback: {e}")
         await event.answer()
 
 
 async def profileback(event: events.CallbackQuery.Event):
-    await event.edit("Вернулись, выбирайте:", buttons=main_menu)
+    await event.edit("Повернулися, обирайте:", buttons=main_menu)
 
 
 async def handle_profile_step(event, step, text):
@@ -139,7 +139,7 @@ async def handle_profile_step(event, step, text):
     current_user = get_user(token, event.sender_id)
 
     if not current_user.get("searched"):
-        await event.respond("❌ Пользователь не найден.", buttons=main_menu)
+        await event.respond("❌ Користувача не знайдено.", buttons=main_menu)
         user_state[event.sender_id] = None
         return
 
@@ -148,11 +148,11 @@ async def handle_profile_step(event, step, text):
 
     if step == "wait_new_name":
         if len(text) < 2 or len(text) > 20:
-            await event.reply("❌ Имя должно быть от 2 до 20 символов!")
+            await event.reply("❌ Ім'я має бути від 2 до 20 символів!")
             return
 
         if not text.replace(" ", "").isalpha():
-            await event.reply("❌ Имя должно состоять только из букв!")
+            await event.reply("❌ Ім'я має складатися тільки з літер!")
             return
 
         payload = _build_update_payload(user_data, first_name=text)
@@ -160,17 +160,17 @@ async def handle_profile_step(event, step, text):
 
         if res.status_code == 200:
             user_state[event.sender_id] = None
-            await event.respond(f"✅ Имя успешно изменено на: **{text}**", buttons=main_menu)
+            await event.respond(f"✅ Ім'я успішно змінено на: **{text}**", buttons=main_menu)
         else:
-            await event.respond(f"❌ Ошибка {res.status_code}: {res.text}")
+            await event.respond(f"❌ Помилка {res.status_code}: {res.text}")
 
     elif step == "wait_new_unique":
         if len(text) < 3 or len(text) > 15:
-            await event.reply("❌ Логин должен быть от 3 до 15 символов!")
+            await event.reply("❌ Логін має бути від 3 до 15 символів!")
             return
 
         if not text.isalnum():
-            await event.reply("❌ Логин может содержать только буквы и цифры без спецсимволов!")
+            await event.reply("❌ Логін може містити тільки літери та цифри без спецсимволів!")
             return
 
         payload = _build_update_payload(user_data, unique=text)
@@ -178,15 +178,15 @@ async def handle_profile_step(event, step, text):
 
         if res.status_code == 200:
             user_state[event.sender_id] = None
-            await event.respond(f"✅ Логин успешно изменен на: **{text}**", buttons=main_menu)
+            await event.respond(f"✅ Логін успішно змінено на: **{text}**", buttons=main_menu)
         elif res.status_code == 400:
-            await event.respond("⚠️ Этот логин уже занят или совпадает с текущим.")
+            await event.respond("⚠️ Цей логін вже зайнятий або збігається з поточним.")
         else:
-            await event.respond(f"❌ Ошибка {res.status_code}")
+            await event.respond(f"❌ Помилка {res.status_code}")
 
     elif step == "wait_new_password":
         if len(text) < 6 or len(text) > 12:
-            await event.reply("❌ **Ошибка:** Пароль должен быть от 6 до 12 символов!")
+            await event.reply("❌ **Помилка:** Пароль має бути від 6 до 12 символів!")
             return
 
         payload = _build_update_payload(user_data, password=text)
@@ -194,7 +194,7 @@ async def handle_profile_step(event, step, text):
 
         if res.status_code == 200:
             user_state[event.sender_id] = None
-            await event.respond("✅ **Успешно!** Ваш пароль был обновлен.", buttons=main_menu)
+            await event.respond("✅ **Успішно!** Ваш пароль було оновлено.", buttons=main_menu)
         elif res.status_code == 400:
             try:
                 reason = res.json().get("detail", "")
@@ -203,21 +203,21 @@ async def handle_profile_step(event, step, text):
 
             if "No changes detected" in str(reason):
                 await event.respond(
-                    "⚠️ **Вы ввели тот же самый пароль.**\nПридумайте новую комбинацию или нажмите «Назад»."
+                    "⚠️ **Ви увели той самий пароль.**\nПридумайте нову комбінацію або натисніть «Назад»."
                 )
             else:
-                await event.respond(f"❌ **Ошибка запроса:** {reason}")
+                await event.respond(f"❌ **Помилка запиту:** {reason}")
         elif res.status_code == 422:
-            await event.respond("❌ **Ошибка валидации:** Сервер не принял формат данных. Проверьте пароль.")
+            await event.respond("❌ **Помилка валідації:** Сервер не прийняв формат даних. Перевірте пароль.")
         else:
-            await event.respond(f"❌ **Ошибка:** {res.status_code}")
+            await event.respond(f"❌ **Помилка:** {res.status_code}")
 
     elif step == "wait_delete_login":
         user_state[event.sender_id] = {
             "step": "wait_delete_password_final",
             "delete_unique": text.strip(),
         }
-        await event.respond("🔐 Теперь введите ваш **Пароль** для окончательного удаления:")
+        await event.respond("🔐 Тепер введіть ваш **Пароль** для остаточного видалення:")
 
     elif step == "wait_delete_password_final":
         delete_login = user_state[event.sender_id].get("delete_unique")
@@ -226,11 +226,11 @@ async def handle_profile_step(event, step, text):
 
         user_state[event.sender_id] = None
         if res.status_code == 200:
-            await event.respond("🗑 **Ваш аккаунт и все данные успешно удалены.**\nДо новых встреч!", buttons=authreg)
+            await event.respond("🗑 **Ваш акаунт та всі дані успішно видалено.**\nДо нових зустрічей!", buttons=authreg)
         elif res.status_code == 404:
-            await event.respond("❌ **Ошибка:** Неверный логин или пароль. Удаление отменено.", buttons=main_menu)
+            await event.respond("❌ **Помилка:** Неправильний логін або пароль. Видалення скасовано.", buttons=main_menu)
         else:
-            await event.respond(f"❌ **Ошибка сервера ({res.status_code}):** {res.text}")
+            await event.respond(f"❌ **Помилка сервера ({res.status_code}):** {res.text}")
 
 
 def _build_update_payload(user_data, unique=None, first_name=None, password=None):

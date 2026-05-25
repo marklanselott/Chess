@@ -1,10 +1,13 @@
+from wsgiref import headers
+
 import requests
 from config import secureToken, base_url
 
 
 def get_token():
     headers = {"token": secureToken}
-    resp = requests.post(f"{base_url}/api/auth/create-token", headers=headers)
+    # Ограничиваем ожидание 5 секундами, чтобы бот не уходил в бесконечный тупняк
+    resp = requests.post(f"{base_url}/api/auth/create-token", headers=headers, timeout=5)
     resp.raise_for_status()
     return resp.json()["jwt"]
 
@@ -105,37 +108,76 @@ def cancel_friend_request(token: str, request_id: str):
 def start_search_opponent(token: str, user_id: str):
     url = f"{base_url.rstrip('/')}/api/opponents/search/start"
     try:
-        return requests.post(url, params={"user_id": user_id, "token": token}, timeout=10)
+        res = requests.post(url, params={"user_id": user_id, "token": token}, timeout=10)
+        print(f"[API start_search_opponent] Статус: {res.status_code}")
+        return res
     except Exception as e:
-        print(f"Ошибка start_search_opponent: {e}")
+        print(f"[API start_search_opponent] Ошибка: {type(e).__name__} - {e}")
         return None
 
-def await_opponent(token: str, user_id: str):
+def await_opponent(token: str, user_id: str, retries: int = 5):
+    """Long-polling запрос ожидания оппонента с агрессивной обработкой сетевых ошибок"""
     url = f"{base_url.rstrip('/')}/api/opponents/await"
-    try:
-        # УБРАЛИ stream=True, оставили чистый long-polling запрос
-        res = requests.get(url, params={"user_id": user_id, "token": token}, timeout=60)
-        
-        if res.status_code == 200:
-            return res.json()
-        elif res.status_code == 404:
-            return "404"  # Обязательно возвращаем строку, а не None!
+    
+    for attempt in range(retries):
+        try:
+            # Long-polling запрос с таймаутом 120 секунд
+            # stream=False гарантирует что весь ответ загружается до возврата
+            res = requests.get(
+                url, 
+                params={"user_id": user_id, "token": token}, 
+                timeout=120,
+                stream=False
+            )
             
-        print(f"[API ДОКА] Сервер вернул код: {res.status_code}")
-        return None
-    except requests.exceptions.Timeout:
-        # Если библиотека requests отвалилась по таймауту в 60 сек — это нормально для лонг-поллинга
-        return "404"
-    except Exception as e:
-        print(f"Ошибка await_opponent: {e}")
-        return None
+            if res.status_code == 200:
+                print(f"[API await_opponent] Успешно! Оппонент найден на попытке {attempt+1}")
+                return res.json()
+            elif res.status_code == 404:
+                print(f"[API await_opponent] Оппонент не найден (попытка {attempt+1})")
+                return "404"
+            else:
+                print(f"[API await_opponent] Сервер вернул код: {res.status_code} (попытка {attempt+1})")
+                return None
+                
+        except requests.exceptions.Timeout:
+            print(f"[API await_opponent] Таймаут на попытке {attempt+1}/{retries}")
+            return "404"
+            
+        except (requests.exceptions.ChunkedEncodingError, 
+                requests.exceptions.ConnectionError,
+                requests.exceptions.ContentDecodingError) as e:
+            # Сетевые ошибки - пробуем ещё раз с увеличенной задержкой
+            error_name = type(e).__name__
+            print(f"[API await_opponent] Сетевая ошибка '{error_name}' на попытке {attempt+1}/{retries}")
+            
+            if attempt < retries - 1:
+                # Экспоненциальная задержка: 2s, 4s, 8s, 16s
+                wait_time = 2 ** (attempt + 1)
+                print(f"[API await_opponent] Ждём {wait_time}s перед повтором...")
+                import time
+                time.sleep(wait_time)
+                continue
+            else:
+                # Все попытки исчерпаны
+                print(f"[API await_opponent] Исчерпаны все {retries} попыток. Завершаем.")
+                return "404"
+                
+        except Exception as e:
+            error_name = type(e).__name__
+            print(f"[API await_opponent] Неожиданная ошибка '{error_name}': {e}")
+            return None
+    
+    return "404"
 
 def stop_search_opponent(token: str, user_id: str):
     url = f"{base_url.rstrip('/')}/api/opponents/search/stop"
     try:
-        return requests.post(url, params={"user_id": user_id, "token": token}, timeout=10)
+        res = requests.post(url, params={"user_id": user_id, "token": token}, timeout=10)
+        print(f"[API stop_search_opponent] Статус: {res.status_code}")
+        return res
     except Exception as e:
-        print(f"Ошибка stop_search_opponent: {e}")
+        print(f"[API stop_search_opponent] Ошибка: {type(e).__name__} - {e}")
         return None
 
 def get_game_board(token: str, game_id: str):
@@ -149,10 +191,11 @@ def get_game_board(token: str, game_id: str):
         return None
 
 
-def make_chess_move(token: str, game_id: str, from_to: str):
+def make_chess_move(token: str, game_id: str, from_to: str, promotion: str = None):
     """
     GET /api/game/move
     Сделать ход (передаем строку движения, например 'e2e4')
+    promotion: 'q' для ферзя, 'r' для ладьи, 'b' для слона, 'n' для коня (опционально)
     """
     url = f"{base_url.rstrip('/')}/api/game/move"
     params = {
@@ -160,6 +203,14 @@ def make_chess_move(token: str, game_id: str, from_to: str):
         "from_to": from_to,
         "token": token
     }
+    if promotion:
+        params["promotion"] = promotion
+        print(f"[API make_chess_move] Отправляем ход с промоцией: move={from_to}, promotion={promotion}")
+    else:
+        print(f"[API make_chess_move] Отправляем ход без промоции: move={from_to}")
+    
+    print(f"[API make_chess_move] Полные параметры: {params}")
+    
     try:
         response = requests.get(url, params=params)
         if response.status_code == 200:
@@ -220,7 +271,61 @@ def make_ai_move(token, game_id):
     except Exception as e:
         print(f"Ошибка make_ai_move: {e}")
         return None
+    
+def start_game_analysis(token, game_id, depth=3):
+    """
+    POST /api/game/analysis/start
+    Исправленная версия: корректно достает jobId из ответа сервера
+    """
+    import requests
+    url = f"{base_url.rstrip('/')}/api/game/analysis/start"
+    params = {
+        "game_id": str(game_id),
+        "depth": int(depth),
+        "token": str(token)
+    }
+    try:
+        response = requests.post(url, params=params)
+        if response.status_code == 200:
+            try:
+                # Пытаемся распарсить как JSON, потому что Марк возвращает объект
+                data = response.json()
+                if isinstance(data, dict) and "jobId" in data:
+                    return str(data.get("jobId"))
+                elif isinstance(data, dict) and "job_id" in data:  # на случай если Марк переименует в змейку
+                    return str(data.get("job_id"))
+            except Exception:
+                # Если вдруг пришла просто строка, очищаем её от лишних кавычек/пробелов
+                text_res = response.text.strip().replace('"', '').replace("'", "")
+                return text_res
+        else:
+            try:
+                return response.json()
+            except Exception:
+                return {"status": "error", "detail": f"Код сервера: {response.status_code}"}
+    except Exception as e:
+        return {"status": "error", "detail": str(e)}
 
+def get_analysis_status(token, job_id):
+    """GET /api/game/analysis/status/{job_id}"""
+    import requests
+    url = f"{base_url.rstrip('/')}/api/game/analysis/status/{str(job_id)}"
+    params = {"token": str(token)}
+    try:
+        response = requests.get(url, params=params)
+        if response.status_code == 200:
+            try:
+                # Марк возвращает JSON, парсим его в словарь
+                return response.json()
+            except Exception:
+                return response.text.strip().replace('"', '')
+        else:
+            try:
+                return response.json()
+            except Exception:
+                return {"status": "error", "detail": f"Код сервера: {response.status_code}"}
+    except Exception as e:
+        return {"status": "error", "detail": str(e)}
 
 def surrender_game(token: str, user_id: str):
     """

@@ -38,32 +38,32 @@ async def show_friends_list(event):
         friends = get_friends_list(token, user_id)
 
         if not friends:
-            text = "👥 **Ваш список друзей пуст.**\n\nСамое время кого-нибудь добавить!"
+            text = "👥 **Ваш список друзів порожній.**\n\nСаме час когось додати!"
         else:
-            text = "👥 **Ваши друзья:**\n\n"
+            text = "👥 **Ваші друзі:**\n\n"
             for friend in friends:
-                name = friend.get("first_name", "Игрок")
+                name = friend.get("first_name", "Гравець")
                 nick = friend.get("unique", "??")
                 rating = friend.get("rating", 0)
                 text += f"• **{name}** (@{nick}) — 🏆 {rating}\n"
 
-        current_buttons = [[Button.inline("🗑 Удалить кого-то", data="unfriend_list")]] + friend_menu
+        current_buttons = [[Button.inline("🗑 Видалити когось", data="unfriend_list")]] + friend_menu
         await event.edit(text, buttons=current_buttons)
     else:
-        await event.answer("❌ Сначала зарегистрируйтесь!", alert=True)
+        await event.answer("❌ Спочатку зареєструйтеся!", alert=True)
 
 
 async def start_add_friend(event):
     user_state[event.sender_id] = {"step": "wait_friend_nickname"}
-    await event.edit("🔍 Введите **Ник (unique)** пользователя, которого хотите добавить:", buttons=[[friend_back]])
+    await event.edit("🔍 Введіть **Нік (unique)** користувача, якого хочете додати:", buttons=[[friend_back]])
 
 
 async def handle_requests_menu(event):
-    text = "🚀 **Управление заявками**\n\nВыберите раздел:"
+    text = "🚀 **Керування заявками**\n\nОберіть розділ:"
     buttons = [
-        [Button.inline("📥 Входящие (вам)", data="requests_in")],
-        [Button.inline("📤 Исходящие (от вас)", data="requests_out")],
-        [Button.inline("⬅️ Назад в меню", data="friend_main")],
+        [Button.inline("📥 Вхідні (вам)", data="requests_in")],
+        [Button.inline("📤 Вихідні (від вас)", data="requests_out")],
+        [Button.inline("⬅️ Назад у меню", data="friend_main")],
     ]
     await event.edit(text, buttons=buttons)
 
@@ -74,10 +74,10 @@ async def handle_accept_request(event):
     res = update_friend_request(token, request_id, True)
 
     if res.status_code == 200:
-        await event.answer("✅ Заявка принята! Теперь вы друзья.", alert=True)
-        await event.edit("✅ **Заявка в друзья принята!**", buttons=None)
+        await event.answer("✅ Заявку прийнято! Тепер ви друзі.", alert=True)
+        await event.edit("✅ **Заявку в друзі прийнято!**", buttons=None)
     else:
-        await event.answer(f"❌ Ошибка сервера: {res.status_code}", alert=True)
+        await event.answer(f"❌ Помилка сервера: {res.status_code}", alert=True)
 
 
 async def handle_reject_request(event):
@@ -86,10 +86,10 @@ async def handle_reject_request(event):
     res = update_friend_request(token, request_id, False)
 
     if res.status_code == 200:
-        await event.answer("❌ Заявка отклонена.", alert=True)
-        await event.edit("❌ **Заявка в друзья отклонена.**", buttons=None)
+        await event.answer("❌ Заявку відхилено.", alert=True)
+        await event.edit("❌ **Заявку в друзі відхилено.**", buttons=None)
     else:
-        await event.answer(f"❌ Ошибка сервера: {res.status_code}", alert=True)
+        await event.answer(f"❌ Помилка сервера: {res.status_code}", alert=True)
 
 
 async def show_incoming(event):
@@ -99,20 +99,20 @@ async def show_incoming(event):
     reqs = get_friend_requests_for_me(token, my_uuid)
 
     if not reqs:
-        await event.edit("📩 **Входящих заявок нет.**", buttons=[[Button.inline("⬅️ Назад", data="friend_requests")]])
+        await event.edit("📩 **Вхідних заявок немає.**", buttons=[[Button.inline("⬅️ Назад", data="friend_requests")]])
         return
 
-    text = "📥 **Входящие заявки:**\n"
+    text = "📥 **Вхідні заявки:**\n"
     buttons = []
 
     for req in reqs:
         r_id = req.get("id")
         user_data = req.get("user") or {}
-        name = user_data.get("unique") or user_data.get("first_name") or "Игрок"
-        text += f"\n👤 От: **@{name}**"
+        name = user_data.get("unique") or user_data.get("first_name") or "Гравець"
+        text += f"\n👤 Від: **@{name}**"
         buttons.append([
-            Button.inline("✅ Принять", data=f"acc_{r_id}"),
-            Button.inline("❌", data=f"rej_{r_id}"),
+            Button.inline("✅ Прийняти", data=f"acc_{r_id}"),
+            Button.inline("❌ Відхилити", data=f"rej_{r_id}"),
         ])
 
     buttons.append([Button.inline("⬅️ Назад", data="friend_requests")])
@@ -126,18 +126,18 @@ async def show_outgoing(event):
     reqs = get_friend_requests_my(token, my_uuid)
 
     if not reqs:
-        await event.edit("📤 **Вы не отправляли заявок.**", buttons=[[Button.inline("⬅️ Назад", data="friend_requests")]])
+        await event.edit("📤 **Ви не надсилали заявок.**", buttons=[[Button.inline("⬅️ Назад", data="friend_requests")]])
         return
 
-    text = "📤 **Ваши исходящие заявки:**\n"
+    text = "📤 **Ваші вихідні заявки:**\n"
     buttons = []
 
     for req in reqs:
         r_id = req.get("id")
         friend_data = req.get("friend") or {}
-        name = friend_data.get("unique") or friend_data.get("first_name") or "Игрок"
-        text += f"\n👤 К: **@{name}**"
-        buttons.append([Button.inline("🚫 Отозвать", data=f"can_{r_id}")])
+        name = friend_data.get("unique") or friend_data.get("first_name") or "Гравець"
+        text += f"\n👤 До: **@{name}**"
+        buttons.append([Button.inline("🚫 Відкликати", data=f"can_{r_id}")])
 
     buttons.append([Button.inline("⬅️ Назад", data="friend_requests")])
     await event.edit(text, buttons=buttons)
@@ -149,10 +149,10 @@ async def handle_cancel_request(event):
     res = cancel_friend_request(token, request_id)
 
     if res.status_code == 200:
-        await event.answer("✅ Заявка отозвана!", alert=True)
+        await event.answer("✅ Заявку відкликано!", alert=True)
         await show_outgoing(event)
     else:
-        await event.answer(f"❌ Ошибка API: {res.status_code}", alert=True)
+        await event.answer(f"❌ Помилка API: {res.status_code}", alert=True)
 
 
 async def show_unfriend_menu(event):
@@ -162,17 +162,17 @@ async def show_unfriend_menu(event):
     friends = get_friends_list(token, user_id)
 
     if not friends:
-        await event.edit("📭 Список пуст.", buttons=[[Button.inline("⬅️ Назад", data="friend_main")]])
+        await event.edit("📭 Список порожній.", buttons=[[Button.inline("⬅️ Назад", data="friend_main")]])
         return
 
     buttons = []
     for friend in friends:
         f_id = friend.get('id')
-        nick = friend.get('unique', 'Игрок')
-        buttons.append([Button.inline(f"❌ Удалить {nick}", data=f"unf_id_{f_id}")])
+        nick = friend.get('unique', 'Гравець')
+        buttons.append([Button.inline(f"❌ Видалити {nick}", data=f"unf_id_{f_id}")])
 
     buttons.append([Button.inline("⬅️ Назад", data="friend_main")])
-    await event.edit("🗑 Выберите друга для удаления:", buttons=buttons)
+    await event.edit("🗑 Оберіть друга для видалення:", buttons=buttons)
 
 
 async def handle_unfriend_action(event):
@@ -181,14 +181,14 @@ async def handle_unfriend_action(event):
     res = update_friend_request(token, target_user_id, False)
 
     if res.status_code == 200:
-        await event.answer("✅ Удалено!", alert=True)
+        await event.answer("✅ Видалено!", alert=True)
     else:
-        await event.answer("❌ Бэкенд все еще отклоняет удаление", alert=True)
+        await event.answer("❌ Бекенд усе ще відхиляє видалення", alert=True)
 
 
 async def go_back_from_friends(event):
     user_state[event.sender_id] = None
-    await event.edit("🏠 Главное меню", buttons=main_menu)
+    await event.edit("🏠 Головне меню", buttons=main_menu)
 
 
 async def handle_friend_step(event, step, text):
@@ -199,7 +199,7 @@ async def handle_friend_step(event, step, text):
     my_info = get_user(token, event.sender_id)
 
     if not my_info.get("searched"):
-        await event.respond("❌ Пользователь не найден.", buttons=main_menu)
+        await event.respond("❌ Користувача не знайдено.", buttons=main_menu)
         user_state[event.sender_id] = None
         return
 
@@ -207,7 +207,7 @@ async def handle_friend_step(event, step, text):
     friend = get_user_by_unique(token, target_nickname)
 
     if not friend:
-        await event.respond("❌ Пользователь с таким ником не найден.", buttons=main_menu)
+        await event.respond("❌ Користувача з таким ніком не знайдено.", buttons=main_menu)
         user_state[event.sender_id] = None
         return
 
@@ -216,28 +216,28 @@ async def handle_friend_step(event, step, text):
     user_state[event.sender_id] = None
 
     if not add_res:
-        await event.respond("❌ Не удалось найти пользователя для отправки запроса.", buttons=main_menu)
+        await event.respond("❌ Не вдалося знайти користувача для надсилання запиту.", buttons=main_menu)
         return
 
     if add_res.status_code == 200:
-        await event.respond(f"✅ Запрос для **{target_nickname}** успешно отправлен!", buttons=main_menu)
+        await event.respond(f"✅ Запит для **{target_nickname}** успішно надіслано!", buttons=main_menu)
 
         friend_tg_id = friend.get("tg_id")
         if friend_tg_id:
             try:
                 msg = (
-                    f"🔔 **Новая заявка в друзья!**\n\n"
-                    f"Игрок **{my_info['searched'][0].get('first_name')}** (@{my_info['searched'][0].get('unique')}) хочет добавить вас."
+                    f"🔔 **Нова заявка в друзі!**\n\n"
+                    f"Гравець **{my_info['searched'][0].get('first_name')}** (@{my_info['searched'][0].get('unique')}) хоче додати вас."
                 )
                 req_buttons = [
                     [
-                        Button.inline("✅ Принять", data=f"acc_{add_res.json().get('id')}"),
-                        Button.inline("❌ Отклонить", data=f"rej_{add_res.json().get('id')}")
+                        Button.inline("✅ Прийняти", data=f"acc_{add_res.json().get('id')}"),
+                        Button.inline("❌ Відхилити", data=f"rej_{add_res.json().get('id')}")
                     ]
                 ]
                 await event.client.send_message(friend_tg_id, msg, buttons=req_buttons)
             except Exception as e:
-                print(f"Ошибка отправки уведомления: {e}")
+                print(f"Помилка надсилання сповіщення: {e}")
 
     elif add_res.status_code in [400, 422]:
         try:
@@ -247,16 +247,16 @@ async def handle_friend_step(event, step, text):
 
         if "already exists" in str(reason).lower():
             await event.respond(
-                "⚠️ **Заявка уже была отправлена ранее.**\nОна ожидает подтверждения в разделе «Заявки» у вашего друга.",
+                "⚠️ **Заявку вже було надіслано раніше.**\nВона очікує підтвердження в розділі «Заявки» у вашого друга.",
                 buttons=main_menu,
             )
         else:
             await event.respond(
-                f"❌ Ошибка сервера: {reason if reason else add_res.status_code}",
+                f"❌ Помилка сервера: {reason if reason else add_res.status_code}",
                 buttons=main_menu,
             )
     else:
         await event.respond(
-            f"❌ Не удалось отправить запрос (Код: {add_res.status_code})",
+            f"❌ Не вдалося надіслати запит (Код: {add_res.status_code})",
             buttons=main_menu,
         )
