@@ -103,15 +103,23 @@ class Game:
         fen="rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
         return GameResponse.Board(fen=fen, json=Convert.fen_to_json(fen))
     
-    def move_fix(from_to: str) -> list[str, str]:
+    def move_fix(from_to: str) -> tuple[str, str]:
         from_to = from_to.lower().replace(" ", "")
         from_ = "".join(sorted(from_to[:2]))[::-1]
-        to_ = "".join(sorted(from_to[2:]))[::-1]
+        to_ = "".join(sorted(from_to[2:4]))[::-1]
         return from_, to_
 
-    async def move(board: GameResponse.Board, from_: str, to_: str) -> dict:
+    def promote_to(from_to: str, promote_to: str | None = None) -> str:
+        if promote_to:
+            return promote_to.lower()
+        from_to = from_to.lower().replace(" ", "")
+        if len(from_to) >= 5:
+            return from_to[4].lower()
+        return "q"
+
+    async def move(board: GameResponse.Board, from_: str, to_: str, promote_to: str = "q") -> dict:
         async with AsyncClient(timeout=chess_core_timeout) as client:
-            json={"fen": board.fen, "from": from_, "to": to_}
+            json={"fen": board.fen, "from": from_, "to": to_, "promoteTo": promote_to}
             try:
                 response = await client.post(f"{base_url}/api/chess/move", json=json)
             except TimeoutException:
@@ -137,9 +145,48 @@ class Game:
                 raise HTTPException(status_code=400, detail=response.text)
             return response.json()
 
+    async def start_analysis(history_fens: list[str], depth: int) -> dict:
+        async with AsyncClient(timeout=chess_core_timeout) as client:
+            try:
+                response = await client.post(
+                    f"{base_url}/api/chess/analyze/start",
+                    json={"historyFens": history_fens, "depth": depth},
+                )
+            except TimeoutException:
+                raise HTTPException(status_code=504, detail="Chess core request timed out")
+            except RequestError:
+                raise HTTPException(status_code=503, detail="Chess core is unavailable")
+
+            if response.status_code >= 400:
+                raise HTTPException(status_code=400, detail=response.text)
+            return response.json()
+
+    async def analysis_status(job_id: UUID) -> dict:
+        async with AsyncClient(timeout=chess_core_timeout) as client:
+            try:
+                response = await client.get(f"{base_url}/api/chess/analyze/status/{job_id}")
+            except TimeoutException:
+                raise HTTPException(status_code=504, detail="Chess core request timed out")
+            except RequestError:
+                raise HTTPException(status_code=503, detail="Chess core is unavailable")
+
+            if response.status_code == 404:
+                raise HTTPException(status_code=404, detail="Analysis job not found")
+            if response.status_code >= 400:
+                raise HTTPException(status_code=400, detail=response.text)
+            return response.json()
+
 
 def get_payload_value(payload: dict, camel_case: str, pascal_case: str, default=None):
     return payload.get(camel_case, payload.get(pascal_case, default))
+
+
+def chess_core_payload_without_fen(payload: dict) -> dict:
+    return {
+        key: value
+        for key, value in payload.items()
+        if key not in ("newFen", "NewFen")
+    }
 
 
 def turn_to_user_color(fen: str) -> UserColor:
@@ -270,7 +317,12 @@ async def start_ai_game(
     400: {"description": "Invalid move or game ID"},
     404: {"description": "Game not found"}
 }, response_model=GameMoveResponse)
-async def move_piece(game_id: UUID, from_to: str, session: AsyncSession = Depends(get_db)):
+async def move_piece(
+    game_id: UUID,
+    from_to: str,
+    promote_to: str | None = Query(default=None, alias="promoteTo"),
+    session: AsyncSession = Depends(get_db),
+):
     try:
         game = await get_game_or_404(session, game_id)
         if game.result:
@@ -285,7 +337,8 @@ async def move_piece(game_id: UUID, from_to: str, session: AsyncSession = Depend
             json=Convert.fen_to_json(last_move.fen)
         )
         fixed_move = Game.move_fix(from_to)
-        chess_core = await Game.move(board, *fixed_move)
+        promotion = Game.promote_to(from_to, promote_to)
+        chess_core = await Game.move(board, *fixed_move, promotion)
         if chess_core.get('newFen') is not None:
             board = GameResponse.Board(
                 fen=chess_core['newFen'],
@@ -316,13 +369,12 @@ async def move_piece(game_id: UUID, from_to: str, session: AsyncSession = Depend
                 await clear_game_sessions(session, game_id)
                 logger.info("Game finished by draw: game_id=%s", game_id)
         await session.commit()
-        logger.info("Move processed: game_id=%s from_to=%s", game_id, fixed_move)
+        logger.info("Move processed: game_id=%s from_to=%s promote_to=%s", game_id, fixed_move, promotion)
 
-        if "newFen" in chess_core:
-            del chess_core["newFen"] 
+        chess_core_response = chess_core_payload_without_fen(chess_core)
 
         return GameMoveResponse(
-            chess_core=chess_core,
+            chess_core=chess_core_response,
             from_to=list(fixed_move),
             game=GameResponse(
                 id=game_id,
@@ -388,17 +440,10 @@ async def move_ai(
             step=last_move.step + 1
         ))
 
-        chess_core = {
-            "isLegal": True,
-            "moveFrom": move_from,
-            "moveTo": move_to,
-            "isCheck": bool(get_payload_value(bot_response, "isCheck", "IsCheck", False)),
-            "isCheckmate": bool(get_payload_value(bot_response, "isCheckmate", "IsCheckmate", False)),
-            "isDraw": bool(get_payload_value(bot_response, "isDraw", "IsDraw", False)),
-        }
+        chess_core = chess_core_payload_without_fen(bot_response)
         result = None
 
-        if chess_core["isCheckmate"]:
+        if get_payload_value(bot_response, "isCheckmate", "IsCheckmate", False):
             winner_id = game.white_id if moving_color == UserColor.WHITE else game.black_id
             loser_id = game.black_id if moving_color == UserColor.WHITE else game.white_id
             winner = await get_user_or_404(session, winner_id)
@@ -411,7 +456,7 @@ async def move_ai(
                 winner_id,
                 loser_id,
             )
-        elif chess_core["isDraw"]:
+        elif get_payload_value(bot_response, "isDraw", "IsDraw", False):
             await apply_game_draw(session, game, reason="draw")
             await clear_game_sessions(session, game_id)
             logger.info("AI game finished by draw: game_id=%s", game_id)
@@ -443,6 +488,49 @@ async def move_ai(
         error_msg = traceback.format_exc()
         logger.error("Error in move_ai: %s", error_msg)
         raise HTTPException(status_code=400, detail=str(e) + "\n" + error_msg)
+
+
+@router.post("/analysis/start", responses={
+    200: {"description": "Successfully started game analysis"},
+    400: {"description": "Invalid game ID or empty game history"},
+    404: {"description": "Game not found"}
+})
+async def start_analysis(
+    game_id: UUID,
+    depth: int = Query(default=3, ge=1, le=5),
+    session: AsyncSession = Depends(get_db),
+):
+    await get_game_or_404(session, game_id)
+    result = await session.execute(
+        select(GameMove.fen)
+        .where(GameMove.game_id == game_id)
+        .order_by(GameMove.step.asc())
+    )
+    history_fens = list(result.scalars().all())
+
+    if not history_fens:
+        raise HTTPException(status_code=400, detail="Game history is empty")
+
+    analysis = await Game.start_analysis(history_fens, depth)
+    logger.info(
+        "Game analysis started: game_id=%s positions=%s depth=%s job_id=%s",
+        game_id,
+        len(history_fens),
+        depth,
+        get_payload_value(analysis, "jobId", "JobId"),
+    )
+    return analysis
+
+
+@router.get("/analysis/status/{job_id}", responses={
+    200: {"description": "Successfully got game analysis status"},
+    404: {"description": "Analysis job not found"}
+})
+async def get_analysis_status(job_id: UUID):
+    status_payload = await Game.analysis_status(job_id)
+    logger.info("Game analysis status requested: job_id=%s", job_id)
+    return status_payload
+
 
 @router.post("/surrender", responses={
     200: {"description": "Successfully surrendered"},

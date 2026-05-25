@@ -95,6 +95,10 @@ bash tests.sh
 python -m pytest -s tests
 ```
 
+Тести автоматично запускають Chess Core з `CHESS_CORE_API_PATH`, якщо він ще не доступний.
+Файли `ChessAPI.dll`, `ChessLib.dll`, `ChessAI.dll` і `ChessAPI.deps.json` мають бути з
+одного publish-білду.
+
 ## Документація API
 
 Після старту сервера інтерактивна документація доступна за адресами:
@@ -182,8 +186,12 @@ curl -X POST "http://127.0.0.1:9538/api/game/ai/start?token=YOUR_JWT_TOKEN&user_
 ### Хід у партії
 
 ```bash
-curl "http://127.0.0.1:9538/api/game/move?token=YOUR_JWT_TOKEN&game_id=GAME_ID&from_to=e2e4"
+curl "http://127.0.0.1:9538/api/game/move?token=YOUR_JWT_TOKEN&game_id=GAME_ID&from_to=e2e4&promoteTo=q"
 ```
+
+`promoteTo` передається в Chess Core для перетворення пішака. Якщо параметр не вказаний,
+API використовує `q` за замовчуванням. Також підтримується короткий запис у `from_to`,
+наприклад `e7e8q`.
 
 ### Хід AI
 

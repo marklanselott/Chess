@@ -186,10 +186,13 @@ class ApiClient:
         assert response.status_code == 200, f"Failed to get game board: {response.text}"
         return response.json()
 
-    def move_piece(self, game_id: str, from_to: str):
+    def move_piece(self, game_id: str, from_to: str, promote_to: str | None = None):
+        params = self.params(game_id=game_id, from_to=from_to)
+        if promote_to is not None:
+            params["promoteTo"] = promote_to
         response = httpx.get(
             f"{self.base_url}/api/game/move",
-            params=self.params(game_id=game_id, from_to=from_to),
+            params=params,
             timeout=10,
         )
         assert response.status_code == 200, f"Failed to move piece: {response.text}"
@@ -216,6 +219,30 @@ class ApiClient:
         return httpx.post(
             f"{self.base_url}/api/game/ai/move",
             params=self.params(game_id=game_id),
+            timeout=20,
+        )
+
+    def start_analysis(self, game_id: str, depth: int = 3):
+        response = self.start_analysis_response(game_id, depth=depth)
+        assert response.status_code == 200, f"Failed to start analysis: {response.text}"
+        return response.json()
+
+    def start_analysis_response(self, game_id: str, depth: int = 3):
+        return httpx.post(
+            f"{self.base_url}/api/game/analysis/start",
+            params=self.params(game_id=game_id, depth=depth),
+            timeout=20,
+        )
+
+    def get_analysis_status(self, job_id: str):
+        response = self.get_analysis_status_response(job_id)
+        assert response.status_code == 200, f"Failed to get analysis status: {response.text}"
+        return response.json()
+
+    def get_analysis_status_response(self, job_id: str):
+        return httpx.get(
+            f"{self.base_url}/api/game/analysis/status/{job_id}",
+            params=self.params(),
             timeout=20,
         )
 

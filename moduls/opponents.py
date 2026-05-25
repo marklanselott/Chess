@@ -215,10 +215,10 @@ async def start_search_opponent(user_id: UUID, session: AsyncSession = Depends(g
     200: {"description": "Successfully got opponent"},
     404: {"description": "User not found or opponent not found"}
 }, response_model=SearchedOpponentResponse)
-async def await_opponent(user_id: str, session: AsyncSession = Depends(get_db)):
+async def await_opponent(user_id: UUID, session: AsyncSession = Depends(get_db)):
     user = await get_user_or_404(session, user_id)
     current_user_id = user.id
-    user_opponent = await get_opponent_search(session, user_id)
+    user_opponent = await get_opponent_search(session, current_user_id)
 
     if not user_opponent:
         raise HTTPException(status_code=404, detail="Opponent search not found")

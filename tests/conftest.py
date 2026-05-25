@@ -1,6 +1,7 @@
 from pathlib import Path
 from uuid import uuid4
 import atexit
+import json
 import os
 import subprocess
 import time
@@ -20,14 +21,68 @@ CHESS_CORE_BASE = os.getenv("CHESS_CORE_BASE", f"http://127.0.0.1:{os.getenv('CH
 START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 
 _chess_core_process = None
+_last_chess_core_error = None
+
+
+def get_expected_chess_lib_version(chess_core_path: Path) -> str | None:
+    deps_path = chess_core_path.with_suffix(".deps.json")
+    if not deps_path.exists():
+        return None
+
+    deps = json.loads(deps_path.read_text(encoding="utf-8"))
+    targets = deps.get("targets", {})
+    for target in targets.values():
+        for library in target.values():
+            runtime = library.get("runtime", {})
+            chess_lib = runtime.get("lib/net10.0/ChessLib.dll")
+            if chess_lib:
+                return chess_lib.get("assemblyVersion")
+    return None
+
+
+def get_actual_chess_lib_version(chess_core_path: Path) -> str | None:
+    chess_lib_path = chess_core_path.with_name("ChessLib.dll")
+    if not chess_lib_path.exists():
+        return None
+
+    command = (
+        "[Reflection.AssemblyName]::"
+        f"GetAssemblyName('{chess_lib_path}').Version.ToString()"
+    )
+    result = subprocess.run(
+        ["powershell", "-NoProfile", "-Command", command],
+        capture_output=True,
+        text=True,
+        timeout=5,
+    )
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip()
+
+
+def assert_chess_core_dependencies(chess_core_path: Path):
+    expected = get_expected_chess_lib_version(chess_core_path)
+    actual = get_actual_chess_lib_version(chess_core_path)
+
+    if expected and actual and expected != actual:
+        raise RuntimeError(
+            "Chess Core dependency mismatch: "
+            f"{chess_core_path.with_name('ChessLib.dll')} is version {actual}, "
+            f"but {chess_core_path.with_suffix('.deps.json')} expects {expected}. "
+            "Replace chess_core with a matching build."
+        )
 
 
 def chess_core_is_available() -> bool:
-    payload = {"fen": START_FEN, "from": "e2", "to": "e4"}
+    global _last_chess_core_error
+    payload = {"fen": START_FEN, "from": "e2", "to": "e4", "promoteTo": "q"}
     try:
         response = httpx.post(f"{CHESS_CORE_BASE}/api/chess/move", json=payload, timeout=2)
+        if response.status_code != 200:
+            _last_chess_core_error = f"HTTP {response.status_code}: {response.text}"
         return response.status_code == 200
-    except httpx.HTTPError:
+    except httpx.HTTPError as exc:
+        _last_chess_core_error = repr(exc)
         return False
 
 
@@ -49,12 +104,17 @@ def ensure_chess_core():
         yield
         return
 
-    chess_core_path = os.getenv("CHESS_CORE_API_PATH", "./chess_core/ChessAPI.dll")
+    chess_core_path = Path(os.getenv("CHESS_CORE_API_PATH", "./chess_core/ChessAPI.dll"))
+    if not chess_core_path.is_absolute():
+        chess_core_path = ROOT / chess_core_path
+    assert_chess_core_dependencies(chess_core_path)
+
     _chess_core_process = subprocess.Popen(
-        ["dotnet", chess_core_path, "--urls", CHESS_CORE_BASE],
+        ["dotnet", str(chess_core_path), "--urls", CHESS_CORE_BASE],
         cwd=ROOT,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
     )
     atexit.register(stop_started_chess_core)
 
@@ -63,8 +123,22 @@ def ensure_chess_core():
             break
         time.sleep(0.5)
     else:
+        stdout = ""
+        stderr = ""
+        if _chess_core_process.poll() is not None:
+            stdout, stderr = _chess_core_process.communicate(timeout=1)
         stop_started_chess_core()
-        raise RuntimeError("Chess Core did not start")
+        details = "\n".join(
+            item
+            for item in [
+                "Chess Core did not become ready",
+                f"last probe error: {_last_chess_core_error}",
+                f"stdout: {stdout.strip()}",
+                f"stderr: {stderr.strip()}",
+            ]
+            if item and not item.endswith(": ")
+        )
+        raise RuntimeError(details)
 
     yield
     stop_started_chess_core()

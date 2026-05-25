@@ -39,6 +39,19 @@ def user_to_response(user: User) -> UserResponse:
     )
 
 
+def parse_uuid_or_422(value: UUID | str, field_name: str) -> UUID:
+    if isinstance(value, UUID):
+        return value
+
+    try:
+        return UUID(str(value))
+    except (TypeError, ValueError, AttributeError):
+        raise HTTPException(
+            status_code=422,
+            detail=f"{field_name} must be a valid UUID",
+        )
+
+
 async def get_or_create_ai_user(session: AsyncSession) -> User:
     unique = os.getenv("AI_USER_UNIQUE", "chess_ai")
     result = await session.execute(select(User).where(User.unique == unique))
@@ -66,6 +79,7 @@ async def get_or_create_ai_user(session: AsyncSession) -> User:
 
 
 async def get_user_or_404(session: AsyncSession, user_id: UUID | str) -> User:
+    user_id = parse_uuid_or_422(user_id, "user_id")
     result = await session.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
@@ -73,7 +87,8 @@ async def get_user_or_404(session: AsyncSession, user_id: UUID | str) -> User:
     return user
 
 
-async def get_game_or_404(session: AsyncSession, game_id: UUID) -> Games:
+async def get_game_or_404(session: AsyncSession, game_id: UUID | str) -> Games:
+    game_id = parse_uuid_or_422(game_id, "game_id")
     result = await session.execute(select(Games).where(Games.id == game_id))
     game = result.scalar_one_or_none()
     if not game:
@@ -81,7 +96,8 @@ async def get_game_or_404(session: AsyncSession, game_id: UUID) -> Games:
     return game
 
 
-async def get_last_move_or_404(session: AsyncSession, game_id: UUID) -> GameMove:
+async def get_last_move_or_404(session: AsyncSession, game_id: UUID | str) -> GameMove:
+    game_id = parse_uuid_or_422(game_id, "game_id")
     result = await session.execute(
         select(GameMove)
         .where(GameMove.game_id == game_id)

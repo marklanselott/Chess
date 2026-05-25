@@ -13,6 +13,7 @@ from db.database import get_db
 from auth import verify_token
 from utils import get_user_or_404, setup_logger, user_to_response
 from datetime import datetime
+from uuid import UUID
 import os
 
 router = APIRouter(dependencies=[Depends(verify_token)])
@@ -64,7 +65,7 @@ async def search(search_filter: UserRequestSearch, session: AsyncSession = Depen
     200: {"description": "User updated successfully"},
     400: {"description": "No changes detected or unique identifier already exists"}
 })
-async def update(update_data: UpdateUserRequest, user_id: str, session: AsyncSession = Depends(get_db)):
+async def update(update_data: UpdateUserRequest, user_id: UUID, session: AsyncSession = Depends(get_db)):
     user = await get_user_or_404(session, user_id)
 
     changed = False
@@ -161,7 +162,7 @@ async def remove(data: RemoveUserRequest, session: AsyncSession = Depends(get_db
     200: {"description": "User found"}, 
     404: {"description": "User not found"}
 })
-async def get_by_id(user_id: str, session: AsyncSession = Depends(get_db)):
+async def get_by_id(user_id: UUID, session: AsyncSession = Depends(get_db)):
     user = await get_user_or_404(session, user_id)
     return user_to_response(user)
 
@@ -169,7 +170,7 @@ async def get_by_id(user_id: str, session: AsyncSession = Depends(get_db)):
     200: {"description": "User stats found"},
     404: {"description": "User not found"}
 })
-async def get_stats(user_id: str, session: AsyncSession = Depends(get_db)):
+async def get_stats(user_id: UUID, session: AsyncSession = Depends(get_db)):
     user = await get_user_or_404(session, user_id)
     result = await session.execute(
         select(Games).where(or_(Games.white_id == user.id, Games.black_id == user.id))

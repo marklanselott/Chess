@@ -34,6 +34,18 @@ def assert_stats(stats, games, wins, losses, draws, rating):
         assert stats["win_rate"] == 0.0
 
 
+def assert_chess_core_without_fen(payload):
+    assert isinstance(payload["chess_core"], dict)
+    assert "newFen" not in payload["chess_core"]
+    assert "NewFen" not in payload["chess_core"]
+
+
+def chess_core_value(payload, camel_case: str, pascal_case: str = None):
+    chess_core = payload["chess_core"]
+    pascal_case = pascal_case or camel_case[:1].upper() + camel_case[1:]
+    return chess_core.get(camel_case, chess_core.get(pascal_case))
+
+
 def await_match_or_timeout(api_client, user_id: str, timeout: int = 7):
     try:
         return "matched", api_client.await_opponent(user_id, timeout=timeout)
@@ -188,11 +200,23 @@ def test_opponent_search_and_game_flow(api_client, test_users, cleanup_test_user
     check_step("Make e2e4 and verify board is persisted")
     initial_fen = game["game"]["board"]["fen"]
     move_result = api_client.move_piece(user1_match["game"]["id"], "e2e4")
-    assert move_result["chess_core"]["isLegal"] is True
+    assert_chess_core_without_fen(move_result)
+    assert chess_core_value(move_result, "isLegal") is True
     assert move_result["game"]["board"]["fen"] != initial_fen
 
     game_after_move = api_client.get_board(user1_match["game"]["id"])
     assert game_after_move["game"]["board"]["fen"] == move_result["game"]["board"]["fen"]
+
+    check_step("Start game analysis and poll its status")
+    invalid_analysis_depth = api_client.start_analysis_response(user1_match["game"]["id"], depth=6)
+    assert invalid_analysis_depth.status_code == 422
+
+    analysis = api_client.start_analysis(user1_match["game"]["id"], depth=4)
+    analysis_job_id = chess_core_value({"chess_core": analysis}, "jobId")
+    assert analysis_job_id
+    analysis_status = api_client.get_analysis_status(analysis_job_id)
+    assert chess_core_value({"chess_core": analysis_status}, "jobId") == analysis_job_id
+    assert chess_core_value({"chess_core": analysis_status}, "status") in ["Processing", "Completed"]
 
     check_step("Stop search while in game is rejected")
     stop_in_game = api_client.stop_search_opponent_response(user1["id"])
@@ -252,17 +276,18 @@ def test_opponent_search_and_game_flow(api_client, test_users, cleanup_test_user
     assert "in the game" in search_while_ai_game.text
 
     player_ai_move = api_client.move_piece(ai_game_id, "e2e4")
-    assert player_ai_move["chess_core"]["isLegal"] is True
+    assert_chess_core_without_fen(player_ai_move)
+    assert chess_core_value(player_ai_move, "isLegal") is True
     assert player_ai_move["game"]["ai_difficulty"] == 4
 
     ai_move = api_client.move_ai(ai_game_id)
-    assert ai_move["chess_core"]["isLegal"] is True
-    assert ai_move["chess_core"]["moveFrom"]
-    assert ai_move["chess_core"]["moveTo"]
+    assert_chess_core_without_fen(ai_move)
+    assert chess_core_value(ai_move, "moveFrom")
+    assert chess_core_value(ai_move, "moveTo")
     assert ai_move["game"]["ai_difficulty"] == 4
     assert ai_move["from_to"] == [
-        ai_move["chess_core"]["moveFrom"],
-        ai_move["chess_core"]["moveTo"],
+        chess_core_value(ai_move, "moveFrom"),
+        chess_core_value(ai_move, "moveTo"),
     ]
     assert ai_move["game"]["board"]["fen"] != player_ai_move["game"]["board"]["fen"]
 
@@ -280,7 +305,8 @@ def test_opponent_search_and_game_flow(api_client, test_users, cleanup_test_user
 
     for move in ["e2e4", "e7e5", "d1h5", "b8c6", "f1c4", "g8f6"]:
         move_result = api_client.move_piece(mate_game_id, move)
-        assert move_result["chess_core"]["isLegal"] is True
+        assert_chess_core_without_fen(move_result)
+        assert chess_core_value(move_result, "isLegal") is True
         assert move_result["result"] is None
 
     white_id = mate_match["game"]["white"]
@@ -288,9 +314,10 @@ def test_opponent_search_and_game_flow(api_client, test_users, cleanup_test_user
     white_rating_before_mate = api_client.get_user(white_id)["rating"]
     black_rating_before_mate = api_client.get_user(black_id)["rating"]
     mate_result = api_client.move_piece(mate_game_id, "h5f7")
-    assert mate_result["chess_core"]["isLegal"] is True
-    assert mate_result["chess_core"]["isCheck"] is True
-    assert mate_result["chess_core"]["isCheckmate"] is True
+    assert_chess_core_without_fen(mate_result)
+    assert chess_core_value(mate_result, "isLegal") is True
+    assert chess_core_value(mate_result, "isCheck") is True
+    assert chess_core_value(mate_result, "isCheckmate") is True
     assert mate_result["result"]["reason"] == "checkmate"
     assert_rating_change(
         mate_result["result"]["winner"],
