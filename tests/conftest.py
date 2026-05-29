@@ -4,6 +4,7 @@ import atexit
 import json
 import os
 import subprocess
+import sys
 import time
 
 from dotenv import load_dotenv
@@ -21,7 +22,9 @@ CHESS_CORE_BASE = os.getenv("CHESS_CORE_BASE", f"http://127.0.0.1:{os.getenv('CH
 START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 
 _chess_core_process = None
+_main_api_process = None
 _last_chess_core_error = None
+_last_main_api_error = None
 
 
 def get_expected_chess_lib_version(chess_core_path: Path) -> str | None:
@@ -97,6 +100,29 @@ def stop_started_chess_core():
     _chess_core_process = None
 
 
+def main_api_is_available() -> bool:
+    global _last_main_api_error
+    try:
+        response = httpx.get(f"{API_BASE}/health", timeout=2)
+        if response.status_code != 200:
+            _last_main_api_error = f"HTTP {response.status_code}: {response.text}"
+        return response.status_code == 200
+    except httpx.HTTPError as exc:
+        _last_main_api_error = repr(exc)
+        return False
+
+
+def stop_started_main_api():
+    global _main_api_process
+    if _main_api_process and _main_api_process.poll() is None:
+        _main_api_process.terminate()
+        try:
+            _main_api_process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            _main_api_process.kill()
+    _main_api_process = None
+
+
 @pytest.fixture(scope="session", autouse=True)
 def ensure_chess_core():
     global _chess_core_process
@@ -112,9 +138,8 @@ def ensure_chess_core():
     _chess_core_process = subprocess.Popen(
         ["dotnet", str(chess_core_path), "--urls", CHESS_CORE_BASE],
         cwd=ROOT,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
     )
     atexit.register(stop_started_chess_core)
 
@@ -127,6 +152,8 @@ def ensure_chess_core():
         stderr = ""
         if _chess_core_process.poll() is not None:
             stdout, stderr = _chess_core_process.communicate(timeout=1)
+            stdout = stdout or ""
+            stderr = stderr or ""
         stop_started_chess_core()
         details = "\n".join(
             item
@@ -142,6 +169,50 @@ def ensure_chess_core():
 
     yield
     stop_started_chess_core()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def ensure_main_api(ensure_chess_core):
+    global _main_api_process
+    if main_api_is_available():
+        yield
+        return
+
+    port = API_BASE.rsplit(":", 1)[-1]
+    _main_api_process = subprocess.Popen(
+        [sys.executable, "-m", "uvicorn", "app:app", "--host", "127.0.0.1", "--port", port],
+        cwd=ROOT,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    atexit.register(stop_started_main_api)
+
+    for _ in range(30):
+        if main_api_is_available():
+            break
+        time.sleep(0.5)
+    else:
+        stdout = ""
+        stderr = ""
+        if _main_api_process.poll() is not None:
+            stdout, stderr = _main_api_process.communicate(timeout=1)
+            stdout = stdout or ""
+            stderr = stderr or ""
+        stop_started_main_api()
+        details = "\n".join(
+            item
+            for item in [
+                "Main API did not become ready",
+                f"last probe error: {_last_main_api_error}",
+                f"stdout: {stdout.strip()}",
+                f"stderr: {stderr.strip()}",
+            ]
+            if item and not item.endswith(": ")
+        )
+        raise RuntimeError(details)
+
+    yield
+    stop_started_main_api()
 
 
 @pytest.fixture(scope="session")
@@ -167,7 +238,7 @@ def token(api_base: str):
         timeout=10,
     )
     assert response.status_code == 200, f"Failed to get token: {response.text}"
-    return response.json()
+    return response.json()["jwt"]
 
 
 @pytest.fixture(scope="session")

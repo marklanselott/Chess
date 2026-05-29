@@ -228,13 +228,14 @@ async def await_opponent(user_id: UUID, session: AsyncSession = Depends(get_db))
     await session.rollback()
 
     async def find_opponent():
+        await asyncio.sleep(random.uniform(0.05, 0.25))
         while True:
             found_game = await try_build_match(session, current_user_id)
             if found_game:
                 yield found_game.model_dump_json() + "\n"
                 return
             
-            await asyncio.sleep(3)
+            await asyncio.sleep(random.uniform(0.5, 1.0))
 
     return StreamingResponse(find_opponent(), media_type="application/json")
 

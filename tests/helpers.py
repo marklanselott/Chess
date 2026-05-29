@@ -98,7 +98,7 @@ class ApiClient:
 
     def get_friend_list_response(self, user_id: str):
         return httpx.get(
-            f"{self.base_url}/api/friends/get_list/user_id/{user_id}",
+            f"{self.base_url}/api/friends/list/user_id/{user_id}",
             params=self.params(),
             timeout=10,
         )
@@ -110,11 +110,20 @@ class ApiClient:
 
     def send_friend_request_response(self, user_id: str, friend_id: str):
         return httpx.post(
-            f"{self.base_url}/api/friends/send_request",
+            f"{self.base_url}/api/friends/requests",
             params=self.params(),
             json={"user_id": user_id, "friend_id": friend_id},
             timeout=10,
         )
+
+    def accept_friend_request(self, request_id: str, user_id: str):
+        response = httpx.post(
+            f"{self.base_url}/api/friends/requests/{request_id}/accept",
+            params=self.params(user_id=user_id),
+            timeout=10,
+        )
+        assert response.status_code == 200, f"Failed to accept friend request: {response.text}"
+        return response.json()
 
     def update_friend_request(self, request_id: str, accept: bool):
         response = httpx.post(
@@ -128,7 +137,7 @@ class ApiClient:
 
     def get_friend_requests_for_me(self, user_id: str):
         response = httpx.get(
-            f"{self.base_url}/api/friends/get_requests_for_me/user_id/{user_id}",
+            f"{self.base_url}/api/friends/requests/incoming/user_id/{user_id}",
             params=self.params(),
             timeout=10,
         )
@@ -137,7 +146,7 @@ class ApiClient:
 
     def get_my_friend_requests(self, user_id: str):
         response = httpx.get(
-            f"{self.base_url}/api/friends/get_requests_my/user_id/{user_id}",
+            f"{self.base_url}/api/friends/requests/sent/user_id/{user_id}",
             params=self.params(),
             timeout=10,
         )
@@ -145,12 +154,36 @@ class ApiClient:
         return response.json()
 
     def cancel_friend_request(self, request_id: str):
-        response = httpx.get(
-            f"{self.base_url}/api/friends/cancel_request/request_id/{request_id}",
-            params=self.params(),
+        response = self.cancel_friend_request_response(request_id)
+        assert response.status_code == 200, f"Failed to cancel friend request: {response.text}"
+        return response.json()
+
+    def cancel_friend_request_response(self, request_id: str, user_id: str | None = None):
+        params = self.params()
+        if user_id is not None:
+            params["user_id"] = user_id
+        return httpx.delete(
+            f"{self.base_url}/api/friends/requests/{request_id}/cancel",
+            params=params,
             timeout=10,
         )
-        assert response.status_code == 200, f"Failed to cancel friend request: {response.text}"
+
+    def decline_friend_request(self, request_id: str, user_id: str):
+        response = httpx.delete(
+            f"{self.base_url}/api/friends/requests/{request_id}/decline",
+            params=self.params(user_id=user_id),
+            timeout=10,
+        )
+        assert response.status_code == 200, f"Failed to decline friend request: {response.text}"
+        return response.json()
+
+    def remove_friend(self, user_id: str, friend_id: str):
+        response = httpx.delete(
+            f"{self.base_url}/api/friends/friend",
+            params=self.params(user_id=user_id, friend_id=friend_id),
+            timeout=10,
+        )
+        assert response.status_code == 200, f"Failed to remove friend: {response.text}"
         return response.json()
 
     def start_search_opponent(self, user_id: str):

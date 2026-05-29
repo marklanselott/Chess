@@ -51,6 +51,7 @@ CHESS_CORE_TIMEOUT=120
 ```
 
 > `start.sh` запускає зовнішній Chess Core через `dotnet`, тому шлях у `CHESS_CORE_API_PATH` має вказувати на зібраний `.dll` файл цього сервісу.
+> На Linux `start.sh` безпечно читає `.env` навіть із Windows-переносами рядків. Якщо експортуєте `.env` вручну через `source .env`, спочатку приберіть CRLF.
 
 ## Встановлення та запуск
 
@@ -95,9 +96,9 @@ bash tests.sh
 python -m pytest -s tests
 ```
 
-Тести автоматично запускають Chess Core з `CHESS_CORE_API_PATH`, якщо він ще не доступний.
-Файли `ChessAPI.dll`, `ChessLib.dll`, `ChessAI.dll` і `ChessAPI.deps.json` мають бути з
-одного publish-білду.
+Тести автоматично запускають Chess Core з `CHESS_CORE_API_PATH` і основний FastAPI через
+`uvicorn app:app`, якщо ці сервіси ще не доступні. Файли `ChessAPI.dll`, `ChessLib.dll`,
+`ChessAI.dll` і `ChessAPI.deps.json` мають бути з одного publish-білду.
 
 ## Документація API
 
@@ -205,10 +206,10 @@ curl -X POST "http://127.0.0.1:9538/api/game/ai/move?token=YOUR_JWT_TOKEN&game_i
 curl -X POST "http://127.0.0.1:9538/api/game/surrender?token=YOUR_JWT_TOKEN&user_id=USER_ID"
 ```
 
-### Запит у друзі
+### Друзі
 
 ```bash
-curl -X POST "http://127.0.0.1:9538/api/friends/send_request?token=YOUR_JWT_TOKEN" \
+curl -X POST "http://127.0.0.1:9538/api/friends/requests?token=YOUR_JWT_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "user_id": "USER_ID",
@@ -216,18 +217,32 @@ curl -X POST "http://127.0.0.1:9538/api/friends/send_request?token=YOUR_JWT_TOKE
   }'
 ```
 
-### Прийняття або відхилення заявки
-
 ```bash
-curl -X POST "http://127.0.0.1:9538/api/friends/update_request?token=YOUR_JWT_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "request_id": "REQUEST_ID",
-    "status": true
-  }'
+curl "http://127.0.0.1:9538/api/friends/requests/sent/user_id/USER_ID?token=YOUR_JWT_TOKEN"
 ```
 
-`status: true` приймає заявку, `status: false` видаляє її.
+```bash
+curl "http://127.0.0.1:9538/api/friends/requests/incoming/user_id/USER_ID?token=YOUR_JWT_TOKEN"
+```
+
+```bash
+curl -X POST "http://127.0.0.1:9538/api/friends/requests/REQUEST_ID/accept?token=YOUR_JWT_TOKEN&user_id=USER_ID"
+```
+
+```bash
+curl -X DELETE "http://127.0.0.1:9538/api/friends/requests/REQUEST_ID/cancel?token=YOUR_JWT_TOKEN&user_id=USER_ID"
+```
+
+```bash
+curl -X DELETE "http://127.0.0.1:9538/api/friends/requests/REQUEST_ID/decline?token=YOUR_JWT_TOKEN&user_id=USER_ID"
+```
+
+```bash
+curl -X DELETE "http://127.0.0.1:9538/api/friends/friend?token=YOUR_JWT_TOKEN&user_id=USER_ID&friend_id=FRIEND_ID"
+```
+
+`cancel` скасовує власну відправлену заявку, `decline` відхиляє вхідну заявку,
+`friend` видаляє користувача з друзів.
 
 ### Пошук суперника
 
