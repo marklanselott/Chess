@@ -188,19 +188,32 @@ def is_my_turn(fen: str, my_color: str) -> bool:
     return True
 
 
-def is_promotion_move(from_cell: str, to_cell: str, my_color: str) -> bool:
+def is_promotion_move(from_cell: str, to_cell: str, my_color: str, fen: str) -> bool:
     """
-    Определяет, является ли ход пешки превращением
+    Определяет, является ли ход ПЕШКИ превращением
     """
     try:
+        # 1. Получаем фигуру из FEN (для простоты можно спарсить FEN)
+        # В FEN белые фигуры - большие буквы, черные - маленькие
+        # Пешка — это 'P' (белая) или 'p' (черная)
+        
+        # Функция для получения фигуры по координатам из FEN
+        piece = get_piece_at_cell(fen, from_cell) 
+        
+        is_pawn = piece.lower() == 'p'
+        
         to_rank = int(to_cell[1])
         is_white = normalize_color(my_color) == "white"
         
-        if is_white and to_rank == 8:
-            return True
-        elif not is_white and to_rank == 1:
-            return True
-    except Exception:
+        # Превращение возможно, только если это ПЕШКА И она дошла до края
+        if is_pawn:
+            if is_white and to_rank == 8:
+                return True
+            elif not is_white and to_rank == 1:
+                return True
+                
+    except Exception as e:
+        print(f"Ошибка в is_promotion_move: {e}")
         pass
     
     return False
@@ -585,7 +598,6 @@ async def send_game_board(event_or_client, user_id):
 async def handle_cell_click(event: events.CallbackQuery.Event):
     """
     Обработчик кликов по кнопкам шахматной доски.
-    Синхронно завершает игру для обоих участников с красивым выводом причины.
     """
     user_id = event.sender_id
     state = user_state.get(user_id)
@@ -597,7 +609,7 @@ async def handle_cell_click(event: events.CallbackQuery.Event):
     fen = state["current_fen"]
     my_color = state["my_color"]
     game_id = state["game_id"]
-    opponent_tg_id = state.get("opponent_tg_id")  # TG ID оппонента из стейта
+    opponent_tg_id = state.get("opponent_tg_id")
     
     if not is_my_turn(fen, my_color):
         await event.answer("⏳ Зараз хід вашого суперника! Чекайте.", alert=True)
@@ -620,22 +632,20 @@ async def handle_cell_click(event: events.CallbackQuery.Event):
         move_str = f"{selected}{cell}"
         token = get_token()
         
-        # Проверяем, это ли ход с промоцией
-        if is_promotion_move(selected, cell, my_color):
-            # Сохраняем информацию о ходе и просим выбрать фигуру
+        # --- ИСПРАВЛЕННЫЙ БЛОК: Проверяем, это ход именно ПЕШКИ с промоцией ---
+        if is_promotion_move(selected, cell, my_color, fen):
             user_state[user_id]["waiting_for_promotion"] = True
             user_state[user_id]["pending_promotion_move"] = move_str
             await send_game_board(event, user_id)
             await event.answer("♕ Виберіть фігуру для перетворення пішака!")
             return
+        # -------------------------------------------------------------------
         
         result = await asyncio.to_thread(make_chess_move, token, game_id, move_str)
-
         
-        # --- 1. ПЕРЕХВАТЫВАЕМ КОНЕЦ ИГРЫ, ЕСЛИ ОНА УЖЕ БЫЛА ЗАВЕРШЕНА РАНЕЕ ---
+        # --- 1. ПЕРЕХВАТЫВАЕМ КОНЕЦ ИГРЫ ---
         if isinstance(result, dict) and ("detail" in result or result.get("status") == "error"):
             msg = result.get("detail", "")
-            
             if any(token in str(msg).lower() for token in ["game already finished", "already finished", "finished"]):
                 parsed = await asyncio.to_thread(get_game_board, token, game_id)
                 state = user_state.get(user_id)
@@ -644,11 +654,9 @@ async def handle_cell_click(event: events.CallbackQuery.Event):
                 if final_state:
                     await notify_end_game(event, user_id, opponent_tg_id, final_state["text_me"], final_state["buttons_me"], final_state["text_opp"], final_state["buttons_opp"])
                     return
-
                 await event.edit("🏁 **Гру завершено.**\n⚠️ Гра вже завершена. Оновіть екран.", buttons=[[Button.inline("◀️ Назад в меню", data="play_back")]])
                 return
                 
-            # Обычный нелегальный ход
             if isinstance(msg, list) and len(msg) > 0:
                 msg = msg[0].get("msg", "Ошибка валидации параметров")
             elif not msg:
@@ -665,7 +673,7 @@ async def handle_cell_click(event: events.CallbackQuery.Event):
             await send_game_board(event, user_id)
             return
             
-        # --- 2. ОБРАБОТКА УСПЕШНОГО ФИНАЛЬНОГО ХОДА ---
+        # --- 2. ОБРАБОТКА УСПЕШНОГО ХОДА ---
         state = user_state.get(user_id)
         is_ai_game = state.get("is_ai", False) if state else False
         parsed_finish = parse_game_finish_data(result, my_color, is_ai=is_ai_game)
@@ -1264,3 +1272,26 @@ async def trigger_analysis_handler(event: events.CallbackQuery.Event):
         else:
             await event.edit(f"❌ **Аналіз завершився з помилкою бекенда.**\nСтатус: {status_str}", buttons=[[play_back]])
             break
+
+
+def get_piece_at_cell(fen: str, cell: str) -> str:
+    """
+    Возвращает символ фигуры ('P', 'n', 'k' и т.д.) или '.' если клетка пуста.
+    """
+    board_part = fen.split()[0]
+    rows = board_part.split('/')
+    
+    col = ord(cell[0]) - ord('a') # 0-7
+    row = 8 - int(cell[1])        # 0-7
+    
+    current_row = rows[row]
+    
+    # Раскрываем FEN-ряд (например, 'r3k2r' -> 'r...k..r')
+    expanded_row = ""
+    for char in current_row:
+        if char.isdigit():
+            expanded_row += "." * int(char)
+        else:
+            expanded_row += char
+            
+    return expanded_row[col]

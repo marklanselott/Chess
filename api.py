@@ -93,6 +93,14 @@ def send_friend_request(token: str, user_id: str, friend_unique: str):
     params = {"token": token}
     return requests.post(f"{base_url.rstrip('/')}/api/friends/send_request", params=params, json=payload)
 
+def delete_friend_from_api(token: str, user_uuid: str, friend_uuid: str):
+    url = f"{base_url.rstrip('/')}/api/friends/friend"
+    params = {
+        "user_id": user_uuid,
+        "friend_id": friend_uuid,
+        "token": token
+    }
+    return requests.delete(url, params=params)
 
 def update_friend_request(token: str, request_id: str, status: bool):
     payload = {"request_id": request_id, "status": status}

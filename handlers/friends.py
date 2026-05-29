@@ -1,6 +1,7 @@
 from telethon import Button, events
 
 from api import (
+    delete_friend_from_api,
     get_token,
     get_user,
     get_user_by_unique,
@@ -176,14 +177,31 @@ async def show_unfriend_menu(event):
 
 
 async def handle_unfriend_action(event):
-    target_user_id = event.pattern_match.group(1).decode('utf-8')
+    friend_uuid = event.pattern_match.group(1).decode('utf-8')
     token = get_token()
-    res = update_friend_request(token, target_user_id, False)
+    
+    # 1. Получаем свой UUID (как мы делали ранее)
+    user_info = get_user(token, event.sender_id)
+    if not user_info.get("searched"):
+        await event.answer("❌ Помилка пошуку профілю")
+        return
+    my_uuid = user_info["searched"][0]["id"]
+    
+    # 2. Выполняем удаление
+    res = delete_friend_from_api(token, my_uuid, friend_uuid)
 
     if res.status_code == 200:
-        await event.answer("✅ Видалено!", alert=True)
+        await event.answer("✅ Друга успішно видалено!", alert=True)
+        
+        # 3. ВЫКИДЫВАЕМ В ГЛАВНОЕ МЕНЮ
+        # Обычно это выглядит как отправка сообщения с кнопками главного меню
+        await event.respond("Ви повернулися до головного меню:", buttons=main_menu)
+        
+        # Если нужно удалить старое сообщение с кнопками друзей, 
+        # добавь event.delete() или event.edit(..., buttons=None)
+        await event.delete() 
     else:
-        await event.answer("❌ Бекенд усе ще відхиляє видалення", alert=True)
+        await event.answer(f"❌ Помилка: {res.status_code}", alert=True)
 
 
 async def go_back_from_friends(event):
