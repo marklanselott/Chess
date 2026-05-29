@@ -5,7 +5,7 @@ play = Button.inline("Грати♟", data="play")
 profile = Button.inline("Профіль🧍", data="profile")
 offline = Button.inline("Грати з ботом🤖", data="offline")
 online = Button.inline("Грати з гравцями🎮", data="online")
-friend = Button.inline("Грати з другом👥", data="friend")
+#Sfriend = Button.inline("Грати з другом👥", data="friend")
 friend_main = Button.inline("Друзі🗣", data="friend_main")
 friend_add = Button.inline("Додати друга👀", data="friend_add")
 friend_back = Button.inline("Назад◀️", data="friend_back")
@@ -46,7 +46,6 @@ profile_menu = [
 
 play_menu = [
 [offline, online],
-[friend],
 [play_back]
 ]
 

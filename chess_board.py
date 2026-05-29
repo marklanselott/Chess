@@ -179,10 +179,10 @@ def get_legal_moves_for_piece(fen: str, from_cell: str) -> set:
     
     return legal_moves
 
-def generate_chess_keyboard(fen: str, selected_cell: str = None) -> list:
+def generate_chess_keyboard(fen: str, selected_cell: str = None, player_color: str = 'white') -> list:
     """
-    Парсить FEN та збирає двовимірний масив інлайн-кнопок 8х8 для Телеграма.
-    Відображає легальні ходи у квадратних дужках при атаці.
+    Парсить FEN и собирает клавиатуру.
+    При player_color='black' доска переворачивается визуально.
     """
     pieces_map = {
         'P': '▫️', 'R': '♜', 'N': '♞', 'B': '♝', 'Q': '♛', 'K': '♚',
@@ -199,8 +199,15 @@ def generate_chess_keyboard(fen: str, selected_cell: str = None) -> list:
     
     keyboard = []
 
-    for row_idx, row_str in enumerate(rows):
+    # ЛОГИКА ПЕРЕВОРОТА:
+    # Если мы за черных, меняем порядок строк (рядов) и столбцов на обратный
+    row_range = range(8) if player_color == 'white' else range(7, -1, -1)
+    col_range = range(8) if player_color == 'white' else range(7, -1, -1)
+
+    for row_idx in row_range:
+        # Для белых: 8-0=8 (8-й ряд), для черных: 8-7=1 (1-й ряд)
         current_rank = 8 - row_idx
+        row_str = rows[row_idx]
         
         full_row = []
         for char in row_str:
@@ -210,25 +217,21 @@ def generate_chess_keyboard(fen: str, selected_cell: str = None) -> list:
                 full_row.append(char)
         
         row_buttons = []
-        for col_idx, cell_content in enumerate(full_row):
+        for col_idx in col_range:
             cell_name = f"{cols[col_idx]}{current_rank}"
+            cell_content = full_row[col_idx]
             
             if cell_content == '.':
                 display_text = "  " 
             else:
                 display_text = pieces_map.get(cell_content, cell_content)
             
-            # Якщо клітинку вибрано поточним гравцем
+            # Логика подсветки
             if selected_cell and cell_name == selected_cell.lower():
                 display_text = f"{{{display_text.strip()}}}"
-                
-            # Якщо клітинка є доступним легальним ходом
             elif cell_name in legal_moves:
-                if cell_content == '.':
-                    display_text = "()"  # Вільна клітинка
-                else:
-                    display_text = f"[{display_text.strip()}]"  # Клітинка з фігурою під атакою
-                
+                display_text = "●" if cell_content == '.' else f"[{display_text.strip()}]"
+            
             btn = Button.inline(display_text, data=f"cell_{cell_name}")
             row_buttons.append(btn)
             

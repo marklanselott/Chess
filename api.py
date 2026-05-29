@@ -174,10 +174,8 @@ def stop_search_opponent(token: str, user_id: str):
     url = f"{base_url.rstrip('/')}/api/opponents/search/stop"
     try:
         res = requests.post(url, params={"user_id": user_id, "token": token}, timeout=10)
-        print(f"[API stop_search_opponent] Статус: {res.status_code}")
         return res
     except Exception as e:
-        print(f"[API stop_search_opponent] Ошибка: {type(e).__name__} - {e}")
         return None
 
 def get_game_board(token: str, game_id: str):
@@ -205,11 +203,6 @@ def make_chess_move(token: str, game_id: str, from_to: str, promotion: str = Non
     }
     if promotion:
         params["promotion"] = promotion
-        print(f"[API make_chess_move] Отправляем ход с промоцией: move={from_to}, promotion={promotion}")
-    else:
-        print(f"[API make_chess_move] Отправляем ход без промоции: move={from_to}")
-    
-    print(f"[API make_chess_move] Полные параметры: {params}")
     
     try:
         response = requests.get(url, params=params)
@@ -343,7 +336,6 @@ def surrender_game(token: str, user_id: str):
         if response.status_code == 200:
             return response.json()  # Или response.text, если там возвращается просто строка "Successfully surrendered"
         else:
-            print(f"Ошибка POST /api/game/surrender [{response.status_code}]: {response.text}")
             return None
     except Exception as e:
         print(f"Ошибка сети в surrender_game: {e}")

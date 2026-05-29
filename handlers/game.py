@@ -214,10 +214,11 @@ def register_game_handlers(bot):
     bot.add_event_handler(callback_force_api_stop, events.CallbackQuery(data="force_api_stop"))
     bot.add_event_handler(handle_cell_click, events.CallbackQuery(pattern=r'^cell_[a-h][1-8]$'))
     bot.add_event_handler(handle_surrender_click, events.CallbackQuery(data="game_surrender"))
-    bot.add_event_handler(start_ai_game_handler, events.CallbackQuery(pattern=r'^(easy|medium|hard)$'))
     bot.add_event_handler(trigger_analysis_handler, events.CallbackQuery(pattern=r'^start_analysis_(.+)'))
     bot.add_event_handler(handle_analysis_navigation, events.CallbackQuery(pattern=r'^analysis_(prev|next)_\d+$'))
     bot.add_event_handler(handle_promotion_choice, events.CallbackQuery(pattern=r'^promotion_(q|r|b|n)$'))
+    bot.add_event_handler(start_ai_game_handler, events.CallbackQuery(pattern=r'^(easy|medium|hard)$'))
+    bot.add_event_handler(finalize_ai_game_setup, events.CallbackQuery(pattern=r'^ai_start_'))
 
 async def play(event: events.CallbackQuery.Event):
     await event.edit("Виберіть режим:", buttons=play_menu)
@@ -267,9 +268,6 @@ async def listen_opponent_moves(client, user_id, game_id):
                 
                 if ai_res and ai_res.status_code == 200:
                     ai_data = ai_res.json()
-                    # DEBUG: выводим JSON ответа для анализа промоции
-                    print(f"\n[ХОД ИИ] AI MOVE RESPONSE:")
-                    print(f"[API RESPONSE] {json.dumps(ai_data, indent=2, ensure_ascii=False)}\n")
                     parsed = parse_game_finish_data(ai_data, my_color, is_ai=True)
                     new_fen = None
                     if isinstance(ai_data, dict):
@@ -415,7 +413,7 @@ async def search_opponent(event: events.CallbackQuery.Event):
         if data == "404" or data is None:
             print(f"[ПОШУК] Таймаут або помилка мережі при пошуку суперника")
             await event.edit(
-                "⏱️ **Istinu закінчився або втрачено з'єднання.**\n"
+                "⏱️ **Таймаут або втрачено з'єднання.**\n"
                 "Спробуйте пошук заново.",
                 buttons=play_menu
             )
@@ -488,8 +486,11 @@ async def send_game_board(event_or_client, user_id):
     opponent_name = state["opponent_name"]
     opponent_rating = state["opponent_rating"]
     
+    # 1. Достаем цвет игрока (по умолчанию 'white', если не задан)
+    my_color = state.get("my_color", "white")
+    
     # Красиво форматируем цвет самого игрока
-    my_color_text = "Білі ⚪" if state["my_color"] == "white" else "Чорні ⚫"
+    my_color_text = "Білі ⚪" if my_color == "white" else "Чорні ⚫"
     
     # ВЫЧИСЛЯЕМ ЧЕЙ СЕЙЧАС ХОД ИЗ FEN
     current_turn_text = "Визначається..."
@@ -504,8 +505,9 @@ async def send_game_board(event_or_client, user_id):
     except Exception:
         pass
 
-    # Генерируем кнопки шахматных клеток
-    chess_buttons = generate_chess_keyboard(fen, selected_cell=selected)
+    # 2. ИСПРАВЛЕНИЕ: Передаем my_color в функцию отрисовки
+    # Функция generate_chess_keyboard сама поймет, нужно ли переворачивать доску
+    chess_buttons = generate_chess_keyboard(fen, selected_cell=selected, player_color=my_color)
     
     # Проверяем, ожидаем ли выбора промоции
     waiting_for_promotion = state.get("waiting_for_promotion", False)
@@ -547,10 +549,8 @@ async def send_game_board(event_or_client, user_id):
     # 1. Если передано событие (клик по кнопке игроком) — редактируем сообщение на месте
     if hasattr(event_or_client, 'edit'):
         try:
-            # ИСПРАВЛЕНИЕ: Сохраняем результат редактирования! В нём содержится железный ID
             edited_msg = await event_or_client.edit(message_content, buttons=chess_buttons)
             
-            # Если Телетон вернул объект измененного сообщения, забираем ID из него
             if edited_msg and hasattr(edited_msg, 'id'):
                 state["board_msg_id"] = edited_msg.id
             elif hasattr(event_or_client, 'msg_id') and event_or_client.msg_id:
@@ -560,12 +560,9 @@ async def send_game_board(event_or_client, user_id):
                 
             return
         except MessageNotModifiedError:
-            # Если содержимое не изменилось, просто гасим ошибку
             return
         except Exception as e:
-            # Любая другая непредвиденная ошибка при клике (например, если инлайн-событие устарело)
             print(f"[Ошибка редактирования при клике]: {e}")
-            # Не делаем тут return, чтобы в случае падения event-а код попробовал обновиться через Сценарий 2 или 3!
 
     # 2. Если вызов из фона (listen_opponent_moves) — редактируем по сохраненному board_msg_id
     board_msg_id = state.get("board_msg_id")
@@ -578,7 +575,7 @@ async def send_game_board(event_or_client, user_id):
         except Exception as e:
             print(f"[Ошибка редактирования доски из фона]: {e}")
 
-    # 3. Самый крайний случай (если сообщения еще нет в истории или оно было удалено) — отправляем новое
+    # 3. Самый крайний случай
     try:
         msg = await client.send_message(user_id, message_content, buttons=chess_buttons)
         state["board_msg_id"] = msg.id
@@ -633,10 +630,7 @@ async def handle_cell_click(event: events.CallbackQuery.Event):
             return
         
         result = await asyncio.to_thread(make_chess_move, token, game_id, move_str)
-        
-        # DEBUG: выводим JSON ответа для анализа промоции
-        print(f"\n[ХОД ИГРОКА] move_str={move_str}")
-        print(f"[API RESPONSE] {json.dumps(result, indent=2, ensure_ascii=False)}\n")
+
         
         # --- 1. ПЕРЕХВАТЫВАЕМ КОНЕЦ ИГРЫ, ЕСЛИ ОНА УЖЕ БЫЛА ЗАВЕРШЕНА РАНЕЕ ---
         if isinstance(result, dict) and ("detail" in result or result.get("status") == "error"):
@@ -832,10 +826,29 @@ async def handle_surrender_click(event: events.CallbackQuery.Event):
             except Exception as e:
                 print(f"[Ошибка уведомления оппонента о сдаче]: {e}")
 
+def get_ai_color_menu(difficulty):
+    return [
+        [Button.inline("⚪ Білі", data=f"ai_start_{difficulty}_white")],
+        [Button.inline("⚫ Чорні", data=f"ai_start_{difficulty}_black")],
+        [Button.inline("◀️ Назад", data="play")]
+    ]
+
+
 async def start_ai_game_handler(event: events.CallbackQuery.Event):
-    """ Максимально защищенный обработчик старта игры с ИИ с обходом зависших сессий """
+    """
+    Тепер цей хендлер лише запитує колір.
+    """
+    level_chosen = event.data.decode('utf-8') # easy, medium, hard
+    await event.edit("Виберіть колір фігур:", buttons=get_ai_color_menu(level_chosen))
+
+async def finalize_ai_game_setup(event: events.CallbackQuery.Event):
+    """
+    Фіналізує налаштування і запускає гру з вибраним кольором.
+    """
+    data = event.data.decode('utf-8') # формат: ai_start_{difficulty}_{color}
+    _, _, level_chosen, my_color = data.split('_')
+    
     user_id = event.sender_id
-    level_chosen = event.data.decode('utf-8')
     token = get_token()
     
     difficulty_map = {"easy": 1, "medium": 3, "hard": 4}
@@ -844,79 +857,52 @@ async def start_ai_game_handler(event: events.CallbackQuery.Event):
     rating_map = {"easy": "400", "medium": "1000", "hard": "1500"}
     ai_rating = rating_map.get(level_chosen, "1000")
     
-    # Сбрасываем стейты поиска в памяти бота сразу
     user_state[user_id] = {"searching": False}
     
     me = get_user(token, user_id)
     if not me or not isinstance(me, dict) or not me.get("searched"):
-        await event.answer("❌ Помилка профілю (Сервер недоступний)", alert=True)
+        await event.answer("❌ Помилка профілю", alert=True)
         return
         
     user_uuid = me["searched"][0].get("id")
-    my_color = "white" 
     
-    await event.edit("🤖 Скидаємо стару гру й підключаємо ШІ...")
+    await event.edit("🤖 Скидаємо стару сесію...")
     
-    # ПРИНУДИТЕЛЬНЫЙ СБРОС СЕССИИ
-    # 1. Сначала отменяем поиск на бэке, если он завис
+    # Скидання старих сесій
     try:
         await asyncio.to_thread(stop_search_opponent, token, user_uuid)
-    except Exception as e:
-        print(f"[Отладка] Ошибка stop_search_opponent: {e}")
-        
-    # 2. Принудительно сдаемся в старой игре по твоему UUID (на случай, если бот упал)
-    try:
         await asyncio.to_thread(surrender_game, token, user_uuid)
-    except Exception as e:
-        print(f"[Отладка] Ошибка surrender_game: {e}")
-        
-    await asyncio.sleep(0.8) # Даем бэкенду Марка «продышаться» и обновить БД
+    except: pass
+    await asyncio.sleep(0.5)
     
-    # 3. Пробуем создать игру с ИИ
-    res = None
-    try:
-        res = await asyncio.to_thread(start_ai_game, token, user_uuid, my_color, ai_diff)
-    except Exception as e:
-        print(f"[КРИТИЧНА ПОМИЛКА API] start_ai_game впав: {e}")
-        await event.edit(f"❌ Сервер не відповідає на запит ШІ.\nПомилка: {e}", buttons=main_menu)
+    # Старт гри
+    res = await asyncio.to_thread(start_ai_game, token, user_uuid, my_color, ai_diff)
+    
+    if not res or res.status_code != 200:
+        await event.edit("❌ Помилка при старті гри з ШІ.", buttons=[[Button.inline("◀️ Меню", data="play_back")]])
         return
+        
+    data = res.json()
+    game_info = data.get("game", {})
+    real_game_id = game_info.get("id")
+    fen = game_info.get("board", {}).get("fen")
+    
+    user_state[user_id] = {
+        "searching": False,
+        "game_id": real_game_id,
+        "my_color": my_color,
+        "opponent_name": "ШІ",
+        "opponent_rating": ai_rating,
+        "opponent_tg_id": None,
+        "current_fen": fen,
+        "selected_piece": None,
+        "board_msg_id": event.message_id,
+        "is_ai": True
+    }
+    
+    await send_game_board(event.client, user_id)
+    asyncio.create_task(listen_opponent_moves(event.client, user_id, real_game_id))
 
-    # Проверяем ответ сервера
-    if not res:
-        await event.edit("❌ Сервер повернув пусту відповідь (None). Перевір, запущений ли сервер", buttons=main_menu)
-        return
-        
-    if res.status_code != 200:
-        await event.edit(f"❌ Не вдалося почати гру. Сервер повернув помилку. (Код: {res.status_code})", buttons=main_menu)
-        return
-        
-    # Если всё прошло успешно, парсим игру
-    try:
-        data = res.json()
-        game_info = data.get("game", {})
-        real_game_id = game_info.get("id")
-        fen = game_info.get("board", {}).get("fen")
-        
-        user_state[user_id] = {
-            "searching": False,
-            "game_id": real_game_id,
-            "my_color": my_color,
-            "opponent_name": "ШІ",            
-            "opponent_rating": ai_rating,     
-            "opponent_tg_id": None,
-            "current_fen": fen,
-            "selected_piece": None,
-            "board_msg_id": event.message_id,
-            "is_ai": True
-        }
-        
-        # Рисуем доску и запускаем прослушку ходов
-        await send_game_board(event.client, user_id)
-        asyncio.create_task(listen_opponent_moves(event.client, user_id, real_game_id))
-        
-    except Exception as e:
-        print(f"[Помилка парсингу відповіді ШІ]: {e}")
-        await event.edit("❌ Помилка при ініціалізації шахової дошки.", buttons=main_menu)
 
 
 def parse_analysis_report(analysis_list, player_color):
