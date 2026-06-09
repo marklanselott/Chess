@@ -205,6 +205,10 @@ def game_ai_difficulty(game) -> int:
     difficulty = game.ai_difficulty or 3
     return max(1, min(5, int(difficulty)))
 
+
+def is_rated_game(game) -> bool:
+    return game.ai_difficulty is None
+
 @router.get("/game", responses={
     200: {"description": "Get current chess board state"},
     400: {"description": "Invalid game ID"},
@@ -354,13 +358,21 @@ async def move_piece(
                 loser_id = game.black_id if moving_color == "w" else game.white_id
                 winner = await get_user_or_404(session, winner_id)
                 loser = await get_user_or_404(session, loser_id)
-                result = await apply_game_result(session, game, winner, loser, reason="checkmate")
+                result = await apply_game_result(
+                    session,
+                    game,
+                    winner,
+                    loser,
+                    reason="checkmate",
+                    rated=is_rated_game(game),
+                )
                 await clear_game_sessions(session, game_id)
                 logger.info(
-                    "Game finished by checkmate: game_id=%s winner_id=%s loser_id=%s winner_delta=%s loser_delta=%s",
+                    "Game finished by checkmate: game_id=%s winner_id=%s loser_id=%s rated=%s winner_delta=%s loser_delta=%s",
                     game_id,
                     winner_id,
                     loser_id,
+                    is_rated_game(game),
                     result.winner.delta,
                     result.loser.delta,
                 )
@@ -448,7 +460,14 @@ async def move_ai(
             loser_id = game.black_id if moving_color == UserColor.WHITE else game.white_id
             winner = await get_user_or_404(session, winner_id)
             loser = await get_user_or_404(session, loser_id)
-            result = await apply_game_result(session, game, winner, loser, reason="checkmate")
+            result = await apply_game_result(
+                session,
+                game,
+                winner,
+                loser,
+                reason="checkmate",
+                rated=is_rated_game(game),
+            )
             await clear_game_sessions(session, game_id)
             logger.info(
                 "AI game finished by checkmate: game_id=%s winner_id=%s loser_id=%s",
@@ -572,15 +591,17 @@ async def surrender(user_id: UUID, session: AsyncSession = Depends(get_db)):
         loser=user,
         reason="surrender",
         loser_penalty_range=(45, 55),
+        rated=is_rated_game(game),
     )
     await clear_game_sessions(session, game_id)
 
     await session.commit()
     logger.info(
-        "Game surrendered: game_id=%s user_id=%s opponent_id=%s winner_delta=%s loser_delta=%s",
+        "Game surrendered: game_id=%s user_id=%s opponent_id=%s rated=%s winner_delta=%s loser_delta=%s",
         game_id,
         user_id,
         opponent_id,
+        is_rated_game(game),
         result.winner.delta,
         result.loser.delta,
     )

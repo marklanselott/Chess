@@ -258,8 +258,11 @@ def test_opponent_search_and_game_flow(api_client, test_users, cleanup_test_user
     invalid_ai_difficulty = api_client.start_ai_game_response(user3["id"], user_color="white", ai_difficulty=6)
     assert invalid_ai_difficulty.status_code == 422
 
+    user3_rating_before_ai = api_client.get_user(user3["id"])["rating"]
     ai_match = api_client.start_ai_game(user3["id"], user_color="white", ai_difficulty=4)
     ai_game_id = ai_match["game"]["id"]
+    ai_user_id = ai_match["opponent"]["id"]
+    ai_rating_before_game = api_client.get_user(ai_user_id)["rating"]
     assert ai_match["user"]["id"] == user3["id"]
     assert ai_match["opponent"]["unique"] == "chess_ai"
     assert ai_match["game"]["white"] == user3["id"]
@@ -296,6 +299,14 @@ def test_opponent_search_and_game_flow(api_client, test_users, cleanup_test_user
 
     ai_surrender = api_client.surrender(user3["id"])
     assert ai_surrender["result"]["reason"] == "surrender"
+    assert ai_surrender["result"]["winner"]["delta"] == 0
+    assert ai_surrender["result"]["winner"]["before"] == ai_rating_before_game
+    assert ai_surrender["result"]["winner"]["after"] == ai_rating_before_game
+    assert ai_surrender["result"]["loser"]["delta"] == 0
+    assert ai_surrender["result"]["loser"]["before"] == user3_rating_before_ai
+    assert ai_surrender["result"]["loser"]["after"] == user3_rating_before_ai
+    assert api_client.get_user(user3["id"])["rating"] == user3_rating_before_ai
+    assert api_client.get_user(ai_user_id)["rating"] == ai_rating_before_game
 
     check_step("Create another game and finish it with checkmate")
     api_client.start_search_opponent(mate_user1["id"])

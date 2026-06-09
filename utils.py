@@ -123,6 +123,16 @@ def apply_rating_delta(user: User, delta: int) -> RatingChange:
     )
 
 
+def keep_rating(user: User) -> RatingChange:
+    rating = int(user.rating or 0)
+    return RatingChange(
+        user_id=user.id,
+        before=rating,
+        after=rating,
+        delta=0,
+    )
+
+
 def mark_game_finished(
     game: Games,
     result: str,
@@ -144,12 +154,17 @@ async def apply_game_result(
     loser: User,
     reason: str,
     loser_penalty_range: tuple[int, int] = (20, 25),
+    rated: bool = True,
 ) -> GameResult:
     if game.result:
         raise HTTPException(status_code=400, detail="Game already finished")
 
-    winner_change = apply_rating_delta(winner, randint(20, 25))
-    loser_change = apply_rating_delta(loser, -randint(*loser_penalty_range))
+    if rated:
+        winner_change = apply_rating_delta(winner, randint(20, 25))
+        loser_change = apply_rating_delta(loser, -randint(*loser_penalty_range))
+    else:
+        winner_change = keep_rating(winner)
+        loser_change = keep_rating(loser)
     mark_game_finished(
         game,
         result="win",
